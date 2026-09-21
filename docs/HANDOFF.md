@@ -47,7 +47,19 @@ ownership, so a UUID belonging to another user yields `NOT_FOUND`.
 - MCP: service-role key from env or an untracked env file, owner verified at startup, stdout reserved
   for the protocol, structured logs on stderr without note text or CSV rows.
 
-## Verification summary
+## Verification (2026-09-21, local Supabase stack)
 
-See the final chat handoff for the exact command list and results; `docs/MANUAL_VERIFICATION.md` is
-the acceptance walkthrough.
+| Command                      | Result                                                                                                                              |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`          | clean                                                                                                                               |
+| `pnpm lint`                  | clean                                                                                                                               |
+| `pnpm typecheck`             | clean (web, core, mcp-server)                                                                                                       |
+| `pnpm test:unit`             | 7 files, 103 tests passed                                                                                                           |
+| `pnpm test:integration`      | 5 files, 24 tests passed                                                                                                            |
+| `pnpm test:e2e`              | 13 passed, 3 skipped (desktop-only specs on the mobile project)                                                                     |
+| `pnpm mcp:build`             | bundle at `packages/mcp-server/dist/index.js`                                                                                       |
+| `pnpm build`                 | production build succeeds                                                                                                           |
+| MCP over stdio (real owner)  | tools/list 9 tools; search, pipeline summary, unique status update (CODEX activity), identical-retry replay, stale-version CONFLICT |
+| Browser walkthrough (Chrome) | sign-in via magic link, create, inline status, dated note, timeline, table, import and profile pages                                |
+
+`docs/MANUAL_VERIFICATION.md` is the owner's acceptance walkthrough.
