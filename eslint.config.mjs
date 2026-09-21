@@ -15,7 +15,21 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "packages/*/dist/**", "coverage/**", "playwright-report/**", "test-results/**"]),
+  {
+    // Playwright fixtures take a parameter named `use`; it is not a React hook.
+    files: ["tests/e2e/**/*.ts", "playwright.config.ts"],
+    rules: { "react-hooks/rules-of-hooks": "off" },
+  },
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "packages/*/dist/**",
+    "coverage/**",
+    "playwright-report/**",
+    "test-results/**",
+  ]),
 ]);
 
 export default eslintConfig;

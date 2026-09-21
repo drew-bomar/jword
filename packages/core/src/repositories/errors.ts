@@ -32,10 +32,13 @@ export function mapDatabaseError(error: PostgrestLikeError, operation: string): 
     if (error.details) {
       try {
         const parsed = JSON.parse(error.details) as Record<string, unknown>;
-        if (Array.isArray(parsed.candidates)) details.candidates = parsed.candidates as JwordErrorDetails["candidates"];
+        if (Array.isArray(parsed.candidates))
+          details.candidates = parsed.candidates as JwordErrorDetails["candidates"];
         if (typeof parsed.rowIndex === "number") details.rowIndex = parsed.rowIndex;
-        if (typeof parsed.currentVersion === "number") details.currentVersion = parsed.currentVersion;
-        if (typeof parsed.expectedVersion === "number") details.expectedVersion = parsed.expectedVersion;
+        if (typeof parsed.currentVersion === "number")
+          details.currentVersion = parsed.currentVersion;
+        if (typeof parsed.expectedVersion === "number")
+          details.expectedVersion = parsed.expectedVersion;
       } catch {
         // detail was not JSON; ignore
       }

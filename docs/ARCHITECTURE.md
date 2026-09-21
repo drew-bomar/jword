@@ -1,5 +1,21 @@
 # jword v1 architecture
 
+## Implementation status (2026-09-21)
+
+Implemented as described below. Concrete locations:
+
+| Layer            | Where                                                                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)          |
+| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                          |
+| Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                   |
+| Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                   |
+| Repositories     | `packages/core/src/repositories/supabase.ts` (owner-scoped queries + RPC), `types.ts` (contract), `testing/fake-repository.ts` (in-memory double) |
+| Database         | `supabase/migrations/20260921000100_schema.sql`, `..._mutation_functions.sql`, `..._candidate_profiles.sql`                                       |
+| Import pipeline  | `packages/core/src/import/*` (parse, map, validate, duplicates)                                                                                   |
+
+Deviations from the original plan are recorded in [decision 014](decisions/014-mvp-implementation-deviations.md): the candidate profile is included at the owner's request, and automated tests run against a local Supabase stack while the hosted project remains the real tracker.
+
 ## Overview
 
 The design separates language interpretation from application authority.
@@ -83,8 +99,10 @@ Example services:
 - `updateApplicationDetails(command, actor)`
 - `addApplicationNote(command, actor)`
 - `updateApplicationNote(command, actor)`
-- `previewCsvImport(command, actor)`
-- `commitCsvImport(command, actor)`
+- `previewImport(command, actor)`
+- `commitImport(command, actor)`
+- `getPipelineSummary(query, actor)`, `getStatusCounts(actor)`
+- `getCandidateProfile(actor)`, `saveCandidateProfile(command, actor)`
 
 `actor` includes owner ID and actor type (`USER`, `CODEX`, or `IMPORT`), assigned by the authenticated entry point rather than form/tool arguments. Actor labels describe the application's operational source; they are not cryptographic proof of which program originated a call using the same credential. Database functions independently enforce write invariants because an authenticated caller can invoke an exposed function without going through TypeScript.
 
@@ -216,11 +234,15 @@ jword/
         validation/
         services/
         repositories/
-    mcp-server/              # implemented at Ticket 7, not during scaffolding
+    mcp-server/
   supabase/
     migrations/
   tests/
+    integration/             # database-backed (local Supabase)
+    e2e/                     # Playwright
 ```
+
+As built, `packages/core` exposes two entry points: `@jword/core/browser` (enums, types, schemas, import helpers; safe for client components) and `@jword/core` (adds services, repositories, and the Supabase client type; server only).
 
 The website and MCP connector both depend on `core`; `core` depends on neither entry point. Keep business rules, shared validation, repository contracts, and the Supabase repository implementation in `core`. Keep cookies, web authentication, and Next.js APIs in the web adapter; keep MCP transport and local credential setup in the connector.
 

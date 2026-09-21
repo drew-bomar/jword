@@ -16,7 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export interface Filters {
   q: string;
@@ -41,7 +47,14 @@ export function FiltersBar({ filters }: { filters: Filters }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [q, setQ] = useState(filters.q);
+  const [urlQ, setUrlQ] = useState(filters.q);
   const [, startTransition] = useTransition();
+
+  // When the URL changes underneath us (Clear filters, back navigation), adopt its value.
+  if (filters.q !== urlQ) {
+    setUrlQ(filters.q);
+    setQ(filters.q);
+  }
 
   function update(patch: Partial<Filters>) {
     const next = new URLSearchParams(searchParams.toString());
@@ -71,7 +84,10 @@ export function FiltersBar({ filters }: { filters: Filters }) {
         <Label htmlFor="search" className="sr-only">
           Search by company or role
         </Label>
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+        <SearchIcon
+          className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
+          aria-hidden
+        />
         <Input
           id="search"
           type="search"
@@ -83,10 +99,13 @@ export function FiltersBar({ filters }: { filters: Filters }) {
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="filter-status" className="text-xs text-muted-foreground">
+        <Label htmlFor="filter-status" className="text-muted-foreground text-xs">
           Status
         </Label>
-        <Select value={filters.status || ALL} onValueChange={(v) => update({ status: v === ALL ? "" : (v as ApplicationStatus) })}>
+        <Select
+          value={filters.status || ALL}
+          onValueChange={(v) => update({ status: v === ALL ? "" : (v as ApplicationStatus) })}
+        >
           <SelectTrigger id="filter-status" className="w-[160px]" aria-label="Filter by status">
             <SelectValue />
           </SelectTrigger>
@@ -102,7 +121,7 @@ export function FiltersBar({ filters }: { filters: Filters }) {
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="filter-priority" className="text-xs text-muted-foreground">
+        <Label htmlFor="filter-priority" className="text-muted-foreground text-xs">
           Priority
         </Label>
         <Select
@@ -124,11 +143,14 @@ export function FiltersBar({ filters }: { filters: Filters }) {
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="sort" className="text-xs text-muted-foreground">
+        <Label htmlFor="sort" className="text-muted-foreground text-xs">
           Sort
         </Label>
         <div className="flex gap-1">
-          <Select value={filters.sort} onValueChange={(v) => update({ sort: v as SearchSort, dir: "" })}>
+          <Select
+            value={filters.sort}
+            onValueChange={(v) => update({ sort: v as SearchSort, dir: "" })}
+          >
             <SelectTrigger id="sort" className="w-[140px]" aria-label="Sort by">
               <SelectValue />
             </SelectTrigger>
@@ -152,7 +174,14 @@ export function FiltersBar({ filters }: { filters: Filters }) {
       </div>
 
       {hasFilters ? (
-        <Button type="button" variant="ghost" onClick={() => { setQ(""); update({ q: "", status: "", priority: "" }); }}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setQ("");
+            update({ q: "", status: "", priority: "" });
+          }}
+        >
           <XIcon data-icon="inline-start" aria-hidden />
           Clear
         </Button>

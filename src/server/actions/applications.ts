@@ -13,7 +13,9 @@ function revalidateApplication(applicationId?: string) {
 }
 
 /** Inputs are `unknown` on purpose: the shared Zod schemas validate inside the services. */
-export async function createApplicationAction(input: unknown): Promise<ActionResult<MutationResult>> {
+export async function createApplicationAction(
+  input: unknown,
+): Promise<ActionResult<MutationResult>> {
   return runAction(async () => {
     const session = await requireSession();
     const result = await servicesFor(session).createApplication(input, session.actor);
@@ -22,7 +24,9 @@ export async function createApplicationAction(input: unknown): Promise<ActionRes
   });
 }
 
-export async function findDuplicatesAction(input: unknown): Promise<ActionResult<DuplicateCandidate[]>> {
+export async function findDuplicatesAction(
+  input: unknown,
+): Promise<ActionResult<DuplicateCandidate[]>> {
   return runAction(async () => {
     const session = await requireSession();
     return servicesFor(session).findDuplicateCandidates(input, session.actor);

@@ -5,7 +5,14 @@ import { useState } from "react";
 import { PencilIcon } from "lucide-react";
 import type { ApplicationDetail } from "@jword/core/browser";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ApplicationForm } from "./application-form";
 
 export function EditDetailsDialog({ application }: { application: ApplicationDetail }) {
@@ -22,7 +29,9 @@ export function EditDetailsDialog({ application }: { application: ApplicationDet
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit details</DialogTitle>
-          <DialogDescription>Changes are recorded in the activity timeline. Status is changed from the header.</DialogDescription>
+          <DialogDescription>
+            Changes are recorded in the activity timeline. Status is changed from the header.
+          </DialogDescription>
         </DialogHeader>
         {open ? (
           <ApplicationForm

@@ -24,8 +24,21 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { commitImportAction, previewImportAction } from "@/server/actions/import";
 import type { ActionError } from "@/server/actions/result";
 import { cn } from "@/lib/utils";
@@ -55,7 +68,14 @@ function StepHeader({ step }: { step: Step }) {
   return (
     <ol className="flex flex-wrap gap-2 text-xs" aria-label="Import steps">
       {steps.map(([key, label]) => (
-        <li key={key} aria-current={step === key ? "step" : undefined} className={cn("rounded-md border px-2 py-1", step === key ? "border-foreground/40 bg-muted font-medium" : "text-muted-foreground")}>
+        <li
+          key={key}
+          aria-current={step === key ? "step" : undefined}
+          className={cn(
+            "rounded-md border px-2 py-1",
+            step === key ? "border-foreground/40 bg-muted font-medium" : "text-muted-foreground",
+          )}
+        >
           {label}
         </li>
       ))}
@@ -83,7 +103,10 @@ export function ImportWizard() {
     setError(null);
     if (!file) return;
     if (file.size > IMPORT_MAX_BYTES) {
-      setError({ code: "VALIDATION_ERROR", message: `That file is ${Math.round(file.size / 1000)} KB. The limit is ${Math.round(IMPORT_MAX_BYTES / 1000)} KB.` });
+      setError({
+        code: "VALIDATION_ERROR",
+        message: `That file is ${Math.round(file.size / 1000)} KB. The limit is ${Math.round(IMPORT_MAX_BYTES / 1000)} KB.`,
+      });
       return;
     }
     const text = await file.text();
@@ -97,7 +120,10 @@ export function ImportWizard() {
       setMapping(suggestMapping(parsed.headers));
       setStep("map");
     } catch (err) {
-      setError({ code: "VALIDATION_ERROR", message: err instanceof JwordError ? err.message : "Could not read that CSV file." });
+      setError({
+        code: "VALIDATION_ERROR",
+        message: err instanceof JwordError ? err.message : "Could not read that CSV file.",
+      });
     }
   }
 
@@ -113,10 +139,17 @@ export function ImportWizard() {
       const initial: Record<number, RowChoice> = {};
       for (const row of res.data.rows) {
         const flagged = isFlagged(row);
-        initial[row.rowIndex] = { include: row.errors.length === 0 && !flagged, importSeparate: false };
+        initial[row.rowIndex] = {
+          include: row.errors.length === 0 && !flagged,
+          importSeparate: false,
+        };
       }
       setChoices(initial);
-      setPreview({ rows: res.data.rows, totalRows: res.data.totalRows, blankRowsSkipped: res.data.blankRowsSkipped });
+      setPreview({
+        rows: res.data.rows,
+        totalRows: res.data.totalRows,
+        blankRowsSkipped: res.data.blankRowsSkipped,
+      });
       setStep("preview");
     });
   }
@@ -168,7 +201,11 @@ export function ImportWizard() {
 
       {error ? (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>{error.code === "IMPORT_ROW_ERROR" ? "Import failed; nothing was saved" : "Something went wrong"}</AlertTitle>
+          <AlertTitle>
+            {error.code === "IMPORT_ROW_ERROR"
+              ? "Import failed; nothing was saved"
+              : "Something went wrong"}
+          </AlertTitle>
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       ) : null}
@@ -177,8 +214,9 @@ export function ImportWizard() {
         <Alert role="alert">
           <AlertTitle>Import result unconfirmed</AlertTitle>
           <AlertDescription>
-            The connection dropped before the server answered. The batch may or may not have been saved. Retry: the same
-            request id is reused, so a successful import will not be duplicated.
+            The connection dropped before the server answered. The batch may or may not have been
+            saved. Retry: the same request id is reused, so a successful import will not be
+            duplicated.
           </AlertDescription>
           <div className="mt-2">
             <Button type="button" size="sm" onClick={runCommit} disabled={pending}>
@@ -190,16 +228,19 @@ export function ImportWizard() {
 
       {step === "upload" ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
-          <FileUpIcon className="mx-auto mb-3 size-6 text-muted-foreground" aria-hidden />
+          <FileUpIcon className="text-muted-foreground mx-auto mb-3 size-6" aria-hidden />
           <Label htmlFor="csv-file" className="block text-sm font-medium">
             Choose a CSV file
           </Label>
-          <p className="mt-1 text-xs text-muted-foreground">Up to {Math.round(IMPORT_MAX_BYTES / 1000)} KB and 500 rows. Company and role columns are required.</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Up to {Math.round(IMPORT_MAX_BYTES / 1000)} KB and 500 rows. Company and role columns
+            are required.
+          </p>
           <input
             id="csv-file"
             type="file"
             accept=".csv,text/csv"
-            className="mx-auto mt-4 block text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm"
+            className="file:bg-background mx-auto mt-4 block text-sm file:mr-3 file:rounded-md file:border file:px-3 file:py-1.5 file:text-sm"
             onChange={(e) => onFile(e.target.files?.[0])}
           />
         </div>
@@ -208,7 +249,8 @@ export function ImportWizard() {
       {step === "map" && mapping ? (
         <div className="space-y-5">
           <div className="text-sm">
-            <span className="font-medium">{fileName}</span> · {rowCount} data rows · {headers.length} columns
+            <span className="font-medium">{fileName}</span> · {rowCount} data rows ·{" "}
+            {headers.length} columns
           </div>
           <div className="overflow-x-auto rounded-lg border">
             <Table>
@@ -234,19 +276,38 @@ export function ImportWizard() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {IMPORT_FIELDS.map((field) => (
-              <MappingSelect key={field} field={field} headers={headers} value={mapping[field]} onChange={(v) => setMapping({ ...mapping, [field]: v })} />
+              <MappingSelect
+                key={field}
+                field={field}
+                headers={headers}
+                value={mapping[field]}
+                onChange={(v) => setMapping({ ...mapping, [field]: v })}
+              />
             ))}
           </div>
           {missingRequiredMappings(mapping).length ? (
-            <p className="text-sm text-destructive" role="alert">
-              Map the required columns: {missingRequiredMappings(mapping).map((f) => IMPORT_FIELD_LABELS[f]).join(", ")}.
+            <p className="text-destructive text-sm" role="alert">
+              Map the required columns:{" "}
+              {missingRequiredMappings(mapping)
+                .map((f) => IMPORT_FIELD_LABELS[f])
+                .join(", ")}
+              .
             </p>
           ) : null}
           <div className="flex gap-2">
-            <Button type="button" onClick={runPreview} disabled={pending || missingRequiredMappings(mapping).length > 0}>
+            <Button
+              type="button"
+              onClick={runPreview}
+              disabled={pending || missingRequiredMappings(mapping).length > 0}
+            >
               {pending ? "Validating…" : "Validate rows"}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setStep("upload")} disabled={pending}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setStep("upload")}
+              disabled={pending}
+            >
               Choose a different file
             </Button>
           </div>
@@ -270,19 +331,23 @@ export function ImportWizard() {
         <div className="space-y-4 rounded-lg border p-6">
           <div className="flex items-center gap-2 text-sm font-medium">
             <CheckCircle2Icon className="size-5 text-emerald-600" aria-hidden />
-            {result.replayed ? "This import was already saved earlier; no rows were added twice." : result.summary}
+            {result.replayed
+              ? "This import was already saved earlier; no rows were added twice."
+              : result.summary}
           </div>
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
             <div>
-              <dt className="text-xs text-muted-foreground">Imported</dt>
+              <dt className="text-muted-foreground text-xs">Imported</dt>
               <dd className="font-medium">{result.imported ?? 0}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Skipped</dt>
-              <dd className="font-medium">{(preview?.rows.length ?? 0) - (result.imported ?? 0)}</dd>
+              <dt className="text-muted-foreground text-xs">Skipped</dt>
+              <dd className="font-medium">
+                {(preview?.rows.length ?? 0) - (result.imported ?? 0)}
+              </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Blank rows dropped</dt>
+              <dt className="text-muted-foreground text-xs">Blank rows dropped</dt>
               <dd className="font-medium">{preview?.blankRowsSkipped ?? 0}</dd>
             </div>
           </dl>
@@ -318,8 +383,15 @@ function MappingSelect({
         {IMPORT_FIELD_LABELS[field]}
         {required ? " *" : ""}
       </Label>
-      <Select value={value === null ? SKIP : String(value)} onValueChange={(v) => onChange(v === SKIP ? null : Number(v))}>
-        <SelectTrigger id={`map-${field}`} className="w-full" aria-invalid={required && value === null}>
+      <Select
+        value={value === null ? SKIP : String(value)}
+        onValueChange={(v) => onChange(v === SKIP ? null : Number(v))}
+      >
+        <SelectTrigger
+          id={`map-${field}`}
+          className="w-full"
+          aria-invalid={required && value === null}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -359,7 +431,10 @@ function PreviewTable({
   const validRows = preview.rows.length - errorRows;
 
   const setChoice = (rowIndex: number, patch: Partial<RowChoice>) =>
-    setChoices((c) => ({ ...c, [rowIndex]: { ...(c[rowIndex] ?? { include: false, importSeparate: false }), ...patch } }));
+    setChoices((c) => ({
+      ...c,
+      [rowIndex]: { ...(c[rowIndex] ?? { include: false, importSeparate: false }), ...patch },
+    }));
 
   return (
     <div className="space-y-4">
@@ -373,7 +448,11 @@ function PreviewTable({
         <span className={cn(errorRows && "text-destructive")}>
           <span className="font-medium">{errorRows}</span> with errors (cannot be imported)
         </span>
-        {preview.blankRowsSkipped ? <span className="text-muted-foreground">{preview.blankRowsSkipped} blank rows dropped</span> : null}
+        {preview.blankRowsSkipped ? (
+          <span className="text-muted-foreground">
+            {preview.blankRowsSkipped} blank rows dropped
+          </span>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto rounded-lg border">
@@ -397,7 +476,11 @@ function PreviewTable({
               const flagged = isFlagged(row);
               const hasErrors = row.errors.length > 0;
               return (
-                <TableRow key={row.rowIndex} data-testid="import-row" data-state={hasErrors ? "error" : flagged ? "flagged" : "valid"}>
+                <TableRow
+                  key={row.rowIndex}
+                  data-testid="import-row"
+                  data-state={hasErrors ? "error" : flagged ? "flagged" : "valid"}
+                >
                   <TableCell>
                     <Checkbox
                       aria-label={`Include row ${row.rowIndex}`}
@@ -406,14 +489,26 @@ function PreviewTable({
                       onCheckedChange={(v) => setChoice(row.rowIndex, { include: v === true })}
                     />
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{row.rowIndex}</TableCell>
-                  <TableCell className="max-w-[160px] truncate">{row.values?.company ?? row.raw.company}</TableCell>
-                  <TableCell className="max-w-[220px] truncate">{row.values?.title ?? row.raw.title}</TableCell>
-                  <TableCell className="text-xs">{row.values ? STATUS_LABELS[(row.values.status ?? "SAVED") as ApplicationStatus] : (row.raw.status ?? "")}</TableCell>
-                  <TableCell className="text-xs tabular-nums">{row.values?.appliedAt ?? (row.raw.appliedAt ? row.raw.appliedAt : "—")}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs tabular-nums">
+                    {row.rowIndex}
+                  </TableCell>
+                  <TableCell className="max-w-[160px] truncate">
+                    {row.values?.company ?? row.raw.company}
+                  </TableCell>
+                  <TableCell className="max-w-[220px] truncate">
+                    {row.values?.title ?? row.raw.title}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {row.values
+                      ? STATUS_LABELS[(row.values.status ?? "SAVED") as ApplicationStatus]
+                      : (row.raw.status ?? "")}
+                  </TableCell>
+                  <TableCell className="text-xs tabular-nums">
+                    {row.values?.appliedAt ?? (row.raw.appliedAt ? row.raw.appliedAt : "—")}
+                  </TableCell>
                   <TableCell className="space-y-1 text-xs">
                     {row.errors.map((e, i) => (
-                      <p key={`e${i}`} className="flex items-start gap-1 text-destructive">
+                      <p key={`e${i}`} className="text-destructive flex items-start gap-1">
                         <CircleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
                         <span>
                           <span className="sr-only">Error: </span>
@@ -422,7 +517,10 @@ function PreviewTable({
                       </p>
                     ))}
                     {row.warnings.map((w, i) => (
-                      <p key={`w${i}`} className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
+                      <p
+                        key={`w${i}`}
+                        className="flex items-start gap-1 text-amber-700 dark:text-amber-300"
+                      >
                         <AlertTriangleIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
                         <span>
                           <span className="sr-only">Warning: </span>
@@ -431,11 +529,18 @@ function PreviewTable({
                       </p>
                     ))}
                     {row.duplicates.map((d) => (
-                      <p key={d.applicationId} className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
+                      <p
+                        key={d.applicationId}
+                        className="flex items-start gap-1 text-amber-700 dark:text-amber-300"
+                      >
                         <AlertTriangleIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
                         <span>
                           Looks like existing{" "}
-                          <Link href={`/applications/${d.applicationId}`} className="underline" target="_blank">
+                          <Link
+                            href={`/applications/${d.applicationId}`}
+                            className="underline"
+                            target="_blank"
+                          >
                             {d.company} — {d.title}
                           </Link>{" "}
                           ({d.matchedOn.join(", ").replace(/_/g, " ")})
@@ -452,13 +557,20 @@ function PreviewTable({
                       <label className="flex items-center gap-1.5 pt-1">
                         <Checkbox
                           checked={choice.importSeparate}
-                          onCheckedChange={(v) => setChoice(row.rowIndex, { importSeparate: v === true, include: v === true ? true : choice.include })}
+                          onCheckedChange={(v) =>
+                            setChoice(row.rowIndex, {
+                              importSeparate: v === true,
+                              include: v === true ? true : choice.include,
+                            })
+                          }
                           aria-label={`Import row ${row.rowIndex} as a separate application`}
                         />
                         <span>Import as a separate application</span>
                       </label>
                     ) : null}
-                    {!hasErrors && !flagged && row.warnings.length === 0 ? <span className="text-muted-foreground">OK</span> : null}
+                    {!hasErrors && !flagged && row.warnings.length === 0 ? (
+                      <span className="text-muted-foreground">OK</span>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               );
@@ -469,19 +581,28 @@ function PreviewTable({
 
       {blockedCount > 0 ? (
         <p className="text-sm text-amber-700 dark:text-amber-300" role="alert">
-          {blockedCount} selected {blockedCount === 1 ? "row is" : "rows are"} flagged as possible duplicates. Uncheck them to
-          skip, or mark them &ldquo;Import as a separate application&rdquo;.
+          {blockedCount} selected {blockedCount === 1 ? "row is" : "rows are"} flagged as possible
+          duplicates. Uncheck them to skip, or mark them &ldquo;Import as a separate
+          application&rdquo;.
         </p>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" onClick={onCommit} disabled={pending || selectedCount === 0 || blockedCount > 0}>
-          {pending ? "Importing…" : `Import ${selectedCount} ${selectedCount === 1 ? "row" : "rows"}`}
+        <Button
+          type="button"
+          onClick={onCommit}
+          disabled={pending || selectedCount === 0 || blockedCount > 0}
+        >
+          {pending
+            ? "Importing…"
+            : `Import ${selectedCount} ${selectedCount === 1 ? "row" : "rows"}`}
         </Button>
         <Button type="button" variant="ghost" onClick={onBack} disabled={pending}>
           Back to mapping
         </Button>
-        <p className="text-xs text-muted-foreground">All selected rows are saved together, or none are.</p>
+        <p className="text-muted-foreground text-xs">
+          All selected rows are saved together, or none are.
+        </p>
       </div>
     </div>
   );

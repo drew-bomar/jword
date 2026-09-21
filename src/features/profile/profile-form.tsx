@@ -7,11 +7,22 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { saveProfileAction } from "@/server/actions/profile";
 import type { ActionError } from "@/server/actions/result";
 
-const TEXT_FIELDS: Array<{ key: keyof CandidateProfile; label: string; type?: string; autoComplete?: string }> = [
+const TEXT_FIELDS: Array<{
+  key: keyof CandidateProfile;
+  label: string;
+  type?: string;
+  autoComplete?: string;
+}> = [
   { key: "fullName", label: "Full name", autoComplete: "name" },
   { key: "email", label: "Email", type: "email", autoComplete: "email" },
   { key: "phone", label: "Phone", type: "tel", autoComplete: "tel" },
@@ -30,7 +41,12 @@ type FormState = Record<string, string>;
 function toForm(profile: CandidateProfile | null): FormState {
   const state: FormState = {};
   for (const f of TEXT_FIELDS) state[f.key] = (profile?.[f.key] as string | null | undefined) ?? "";
-  state.requiresSponsorship = profile?.requiresSponsorship === null || profile?.requiresSponsorship === undefined ? "unknown" : profile.requiresSponsorship ? "yes" : "no";
+  state.requiresSponsorship =
+    profile?.requiresSponsorship === null || profile?.requiresSponsorship === undefined
+      ? "unknown"
+      : profile.requiresSponsorship
+        ? "yes"
+        : "no";
   return state;
 }
 
@@ -45,7 +61,8 @@ export function ProfileForm({ profile }: { profile: CandidateProfile | null }) {
     startTransition(async () => {
       const payload: Record<string, unknown> = {};
       for (const f of TEXT_FIELDS) payload[f.key] = values[f.key]?.trim() ? values[f.key] : null;
-      payload.requiresSponsorship = values.requiresSponsorship === "unknown" ? null : values.requiresSponsorship === "yes";
+      payload.requiresSponsorship =
+        values.requiresSponsorship === "unknown" ? null : values.requiresSponsorship === "yes";
       const result = await saveProfileAction(payload);
       if (!result.ok) {
         setError(result.error);
@@ -76,7 +93,7 @@ export function ProfileForm({ profile }: { profile: CandidateProfile | null }) {
               aria-invalid={Boolean(error?.fieldErrors?.[f.key])}
             />
             {error?.fieldErrors?.[f.key]?.[0] ? (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-destructive text-xs" role="alert">
                 {error.fieldErrors[f.key]![0]}
               </p>
             ) : null}
@@ -84,7 +101,10 @@ export function ProfileForm({ profile }: { profile: CandidateProfile | null }) {
         ))}
         <div className="space-y-1.5">
           <Label htmlFor="profile-sponsorship">Requires visa sponsorship</Label>
-          <Select value={values.requiresSponsorship} onValueChange={(v) => setValues({ ...values, requiresSponsorship: v })}>
+          <Select
+            value={values.requiresSponsorship}
+            onValueChange={(v) => setValues({ ...values, requiresSponsorship: v })}
+          >
             <SelectTrigger id="profile-sponsorship" className="w-full">
               <SelectValue />
             </SelectTrigger>

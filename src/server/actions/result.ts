@@ -19,7 +19,11 @@ export async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T
     const typed = toJwordError(error);
     if (typed.code === "INTERNAL_ERROR") {
       console.error(
-        JSON.stringify({ level: "error", where: "server-action", message: (error as Error)?.message ?? String(error) }),
+        JSON.stringify({
+          level: "error",
+          where: "server-action",
+          message: (error as Error)?.message ?? String(error),
+        }),
       );
     }
     return {

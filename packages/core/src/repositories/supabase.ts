@@ -117,7 +117,12 @@ function sanitizeSearchText(text: string): string {
 }
 
 function asMutationResult(value: Json, operation: string): MutationResult {
-  if (!value || typeof value !== "object" || Array.isArray(value) || (value as Record<string, unknown>).ok !== true) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    (value as Record<string, unknown>).ok !== true
+  ) {
     throw new JwordError("INTERNAL_ERROR", `${operation} returned an unexpected result.`);
   }
   const raw = value as Record<string, unknown>;
@@ -138,7 +143,9 @@ function asMutationResult(value: Json, operation: string): MutationResult {
     before: (raw.before as Record<string, string | null>) ?? {},
     after: (raw.after as Record<string, string | null>) ?? {},
     imported: typeof raw.imported === "number" ? raw.imported : undefined,
-    applicationIds: Array.isArray(raw.applicationIds) ? (raw.applicationIds as string[]) : undefined,
+    applicationIds: Array.isArray(raw.applicationIds)
+      ? (raw.applicationIds as string[])
+      : undefined,
   };
 }
 
@@ -201,7 +208,11 @@ export class SupabaseTrackerRepository implements TrackerRepository {
     return data ? mapOverview(data as OverviewRow) : null;
   }
 
-  async listNotes(userId: string, applicationId: string, page: PageRequest): Promise<Page<ApplicationNote>> {
+  async listNotes(
+    userId: string,
+    applicationId: string,
+    page: PageRequest,
+  ): Promise<Page<ApplicationNote>> {
     const filterKey = filterKeyFor({ notes: applicationId, userId });
     const offset = decodeCursor(page.cursor, filterKey);
     const { data, error } = await this.client
@@ -222,7 +233,11 @@ export class SupabaseTrackerRepository implements TrackerRepository {
     };
   }
 
-  async listActivity(userId: string, applicationId: string, page: PageRequest): Promise<Page<ApplicationActivity>> {
+  async listActivity(
+    userId: string,
+    applicationId: string,
+    page: PageRequest,
+  ): Promise<Page<ApplicationActivity>> {
     const filterKey = filterKeyFor({ activity: applicationId, userId });
     const offset = decodeCursor(page.cursor, filterKey);
     const { data, error } = await this.client
@@ -245,7 +260,10 @@ export class SupabaseTrackerRepository implements TrackerRepository {
   }
 
   async listStatuses(userId: string): Promise<ApplicationStatus[]> {
-    const { data, error } = await this.client.from("applications").select("status").eq("user_id", userId);
+    const { data, error } = await this.client
+      .from("applications")
+      .select("status")
+      .eq("user_id", userId);
     if (error) throw mapDatabaseError(error, "count statuses");
     return (data ?? []).map((row) => row.status);
   }
@@ -253,7 +271,9 @@ export class SupabaseTrackerRepository implements TrackerRepository {
   async listDuplicateIndex(userId: string): Promise<DuplicateIndexEntry[]> {
     const { data, error } = await this.client
       .from("application_overview")
-      .select("application_id, company_name, company_normalized_name, title, normalized_title, job_url, external_job_id, status")
+      .select(
+        "application_id, company_name, company_normalized_name, title, normalized_title, job_url, external_job_id, status",
+      )
       .eq("user_id", userId);
     if (error) throw mapDatabaseError(error, "duplicate index");
     return (data ?? []).map((row) => ({
@@ -269,7 +289,12 @@ export class SupabaseTrackerRepository implements TrackerRepository {
   }
 
   private async mutate(
-    fn: "create_application" | "update_application_status" | "update_application_details" | "add_application_note" | "update_application_note",
+    fn:
+      | "create_application"
+      | "update_application_status"
+      | "update_application_details"
+      | "add_application_note"
+      | "update_application_note",
     ctx: MutationContext,
     requestId: string,
     command: Record<string, unknown>,
@@ -285,32 +310,50 @@ export class SupabaseTrackerRepository implements TrackerRepository {
     return asMutationResult(data, fn);
   }
 
-  createApplication(ctx: MutationContext, command: CreateApplicationCommand): Promise<MutationResult> {
+  createApplication(
+    ctx: MutationContext,
+    command: CreateApplicationCommand,
+  ): Promise<MutationResult> {
     const { requestId, ...rest } = command;
     return this.mutate("create_application", ctx, requestId, rest);
   }
 
-  updateApplicationStatus(ctx: MutationContext, command: UpdateApplicationStatusCommand): Promise<MutationResult> {
+  updateApplicationStatus(
+    ctx: MutationContext,
+    command: UpdateApplicationStatusCommand,
+  ): Promise<MutationResult> {
     const { requestId, ...rest } = command;
     return this.mutate("update_application_status", ctx, requestId, rest);
   }
 
-  updateApplicationDetails(ctx: MutationContext, command: UpdateApplicationDetailsCommand): Promise<MutationResult> {
+  updateApplicationDetails(
+    ctx: MutationContext,
+    command: UpdateApplicationDetailsCommand,
+  ): Promise<MutationResult> {
     const { requestId, ...rest } = command;
     return this.mutate("update_application_details", ctx, requestId, rest);
   }
 
-  addApplicationNote(ctx: MutationContext, command: AddApplicationNoteCommand): Promise<MutationResult> {
+  addApplicationNote(
+    ctx: MutationContext,
+    command: AddApplicationNoteCommand,
+  ): Promise<MutationResult> {
     const { requestId, ...rest } = command;
     return this.mutate("add_application_note", ctx, requestId, rest);
   }
 
-  updateApplicationNote(ctx: MutationContext, command: UpdateApplicationNoteCommand): Promise<MutationResult> {
+  updateApplicationNote(
+    ctx: MutationContext,
+    command: UpdateApplicationNoteCommand,
+  ): Promise<MutationResult> {
     const { requestId, ...rest } = command;
     return this.mutate("update_application_note", ctx, requestId, rest);
   }
 
-  async importApplications(ctx: MutationContext, command: CommitImportCommand): Promise<MutationResult> {
+  async importApplications(
+    ctx: MutationContext,
+    command: CommitImportCommand,
+  ): Promise<MutationResult> {
     const { data, error } = await this.client.rpc("import_applications", {
       p_owner_id: ctx.actor.userId,
       p_actor: ctx.actor.actorType,
@@ -331,14 +374,18 @@ export class SupabaseTrackerRepository implements TrackerRepository {
     return data ? mapProfile(data) : null;
   }
 
-  async saveCandidateProfile(userId: string, command: CandidateProfileCommand): Promise<CandidateProfile> {
+  async saveCandidateProfile(
+    userId: string,
+    command: CandidateProfileCommand,
+  ): Promise<CandidateProfile> {
     const { error } = await this.client.rpc("save_candidate_profile", {
       p_owner_id: userId,
       p_command: stripUndefined(command) as Json,
     });
     if (error) throw mapDatabaseError(error, "save_candidate_profile");
     const profile = await this.getCandidateProfile(userId);
-    if (!profile) throw new JwordError("INTERNAL_ERROR", "Profile was saved but could not be read back.");
+    if (!profile)
+      throw new JwordError("INTERNAL_ERROR", "Profile was saved but could not be read back.");
     return profile;
   }
 }

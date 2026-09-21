@@ -18,7 +18,11 @@ beforeEach(() => {
   services = createTrackerServices({ repository: repo, clock: fixedClock("2026-09-21") });
 });
 
-async function expectError(promise: Promise<unknown>, code: string, reason?: string): Promise<JwordError> {
+async function expectError(
+  promise: Promise<unknown>,
+  code: string,
+  reason?: string,
+): Promise<JwordError> {
   try {
     await promise;
   } catch (error) {
@@ -32,7 +36,10 @@ async function expectError(promise: Promise<unknown>, code: string, reason?: str
 }
 
 async function create(overrides: Record<string, unknown> = {}, actor = OWNER) {
-  return services.createApplication({ requestId: randomUUID(), company: "IBM", title: "Software Engineer", ...overrides }, actor);
+  return services.createApplication(
+    { requestId: randomUUID(), company: "IBM", title: "Software Engineer", ...overrides },
+    actor,
+  );
 }
 
 describe("createApplication", () => {
@@ -40,7 +47,11 @@ describe("createApplication", () => {
     const result = await create();
     expect(result.ok).toBe(true);
     expect(result.version).toBe(1);
-    expect(result.after).toMatchObject({ status: "SAVED", dateFound: "2026-09-21", appliedAt: null });
+    expect(result.after).toMatchObject({
+      status: "SAVED",
+      dateFound: "2026-09-21",
+      appliedAt: null,
+    });
     const view = await services.getApplication({ applicationId: result.applicationId }, OWNER);
     expect(view.application.dateFound).toBe("2026-09-21");
     expect(view.activity.items).toHaveLength(1);
@@ -50,7 +61,12 @@ describe("createApplication", () => {
   it("defaults appliedAt to today when created as APPLIED, explicit null stays null", async () => {
     const applied = await create({ status: "APPLIED" });
     expect(applied.after.appliedAt).toBe("2026-09-21");
-    const blank = await create({ company: "Datadog", status: "APPLIED", appliedAt: null, dateFound: null });
+    const blank = await create({
+      company: "Datadog",
+      status: "APPLIED",
+      appliedAt: null,
+      dateFound: null,
+    });
     expect(blank.after.appliedAt).toBeNull();
     expect(blank.after.dateFound).toBeNull();
     const explicit = await create({ company: "Ramp", status: "APPLIED", appliedAt: "2026-09-01" });
@@ -69,8 +85,15 @@ describe("createApplication", () => {
 
   it("returns duplicate candidates as CONFLICT and creates nothing", async () => {
     const first = await create();
-    const error = await expectError(create({ company: "ibm ", title: "software  engineer" }), "CONFLICT", "DUPLICATE_CANDIDATES");
-    expect(error.details.candidates?.[0]).toMatchObject({ applicationId: first.applicationId, matchedOn: ["company_title"] });
+    const error = await expectError(
+      create({ company: "ibm ", title: "software  engineer" }),
+      "CONFLICT",
+      "DUPLICATE_CANDIDATES",
+    );
+    expect(error.details.candidates?.[0]).toMatchObject({
+      applicationId: first.applicationId,
+      matchedOn: ["company_title"],
+    });
     expect(repo.applications).toHaveLength(1);
     expect(repo.activities).toHaveLength(1);
   });
@@ -103,19 +126,39 @@ describe("updateApplicationStatus", () => {
   it("records STATUS_CHANGED with before/after and increments version once", async () => {
     const created = await create({ status: "APPLIED", appliedAt: "2026-09-10" });
     const result = await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "OA" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "OA",
+      },
       CODEX,
     );
-    expect(result).toMatchObject({ noop: false, version: 2, changedFields: ["status"], before: { status: "APPLIED" }, after: { status: "OA" } });
+    expect(result).toMatchObject({
+      noop: false,
+      version: 2,
+      changedFields: ["status"],
+      before: { status: "APPLIED" },
+      after: { status: "OA" },
+    });
     const view = await services.getApplication({ applicationId: created.applicationId }, OWNER);
     expect(view.application.version).toBe(2);
-    expect(view.activity.items[0]).toMatchObject({ type: "STATUS_CHANGED", actorType: "CODEX", activityId: result.activityId });
+    expect(view.activity.items[0]).toMatchObject({
+      type: "STATUS_CHANGED",
+      actorType: "CODEX",
+      activityId: result.activityId,
+    });
   });
 
   it("defaults appliedAt to today when moving to APPLIED without a date", async () => {
     const created = await create();
     const result = await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "APPLIED" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "APPLIED",
+      },
       OWNER,
     );
     expect(result.changedFields).toEqual(["status", "appliedAt"]);
@@ -125,11 +168,20 @@ describe("updateApplicationStatus", () => {
   it("explicit null keeps appliedAt blank when entering APPLIED", async () => {
     const created = await create();
     const result = await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "APPLIED", appliedAt: null },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "APPLIED",
+        appliedAt: null,
+      },
       OWNER,
     );
     expect(result.changedFields).toEqual(["status"]);
-    expect((await services.getApplication({ applicationId: created.applicationId }, OWNER)).application.appliedAt).toBeNull();
+    expect(
+      (await services.getApplication({ applicationId: created.applicationId }, OWNER)).application
+        .appliedAt,
+    ).toBeNull();
   });
 
   it("unchanged status is a no-op with no activity or version bump, but a receipt", async () => {
@@ -151,7 +203,12 @@ describe("updateApplicationStatus", () => {
   it("does not fill a missing date when an already-APPLIED status is resubmitted", async () => {
     const created = await create({ status: "APPLIED", appliedAt: null });
     const result = await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "APPLIED" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "APPLIED",
+      },
       OWNER,
     );
     expect(result.noop).toBe(true);
@@ -160,7 +217,13 @@ describe("updateApplicationStatus", () => {
   it("date-only change records DETAILS_UPDATED", async () => {
     const created = await create({ status: "APPLIED", appliedAt: "2026-09-10" });
     const result = await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "APPLIED", appliedAt: "2026-09-12" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "APPLIED",
+        appliedAt: "2026-09-12",
+      },
       OWNER,
     );
     expect(result.changedFields).toEqual(["appliedAt"]);
@@ -170,18 +233,43 @@ describe("updateApplicationStatus", () => {
   it("returning to an earlier status preserves appliedAt", async () => {
     const created = await create({ status: "APPLIED", appliedAt: "2026-09-10" });
     await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "SAVED" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "SAVED",
+      },
       OWNER,
     );
     const view = await services.getApplication({ applicationId: created.applicationId }, OWNER);
-    expect(view.application).toMatchObject({ status: "SAVED", appliedAt: "2026-09-10", version: 2 });
+    expect(view.application).toMatchObject({
+      status: "SAVED",
+      appliedAt: "2026-09-10",
+      version: 2,
+    });
   });
 
   it("stale version returns CONFLICT and changes nothing", async () => {
     const created = await create();
-    await services.updateApplicationStatus({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "OA" }, OWNER);
+    await services.updateApplicationStatus(
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "OA",
+      },
+      OWNER,
+    );
     const error = await expectError(
-      services.updateApplicationStatus({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "INTERVIEW" }, OWNER),
+      services.updateApplicationStatus(
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          expectedVersion: 1,
+          status: "INTERVIEW",
+        },
+        OWNER,
+      ),
       "CONFLICT",
       "STALE_VERSION",
     );
@@ -194,7 +282,13 @@ describe("updateApplicationStatus", () => {
   it("accepts an explicit occurredAt for the activity", async () => {
     const created = await create();
     await services.updateApplicationStatus(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "OA", occurredAt: "2026-09-15T10:00:00Z" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        status: "OA",
+        occurredAt: "2026-09-15T10:00:00Z",
+      },
       OWNER,
     );
     expect(repo.activities.at(-1)!.occurredAt).toBe("2026-09-15T10:00:00Z");
@@ -219,14 +313,24 @@ describe("updateApplicationDetails", () => {
     expect(result.changedFields.sort()).toEqual(["jobUrl", "location", "priority", "referral"]);
     expect(result.version).toBe(2);
     const view = await services.getApplication({ applicationId: created.applicationId }, OWNER);
-    expect(view.application).toMatchObject({ priority: "HIGH", location: "Austin, TX", jobUrl: "https://ibm.com/jobs/1", referral: "Jane" });
+    expect(view.application).toMatchObject({
+      priority: "HIGH",
+      location: "Austin, TX",
+      jobUrl: "https://ibm.com/jobs/1",
+      referral: "Jane",
+    });
     expect(view.activity.items[0]).toMatchObject({ type: "DETAILS_UPDATED" });
   });
 
   it("is a no-op when all values already match", async () => {
     const created = await create({ priority: "HIGH" });
     const result = await services.updateApplicationDetails(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, priority: "HIGH" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        priority: "HIGH",
+      },
       OWNER,
     );
     expect(result).toMatchObject({ noop: true, version: 1, changedFields: [] });
@@ -236,11 +340,22 @@ describe("updateApplicationDetails", () => {
   it("rejects empty and disallowed updates", async () => {
     const created = await create();
     await expectError(
-      services.updateApplicationDetails({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1 }, OWNER),
+      services.updateApplicationDetails(
+        { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1 },
+        OWNER,
+      ),
       "VALIDATION_ERROR",
     );
     await expectError(
-      services.updateApplicationDetails({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "OA" }, OWNER),
+      services.updateApplicationDetails(
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          expectedVersion: 1,
+          status: "OA",
+        },
+        OWNER,
+      ),
       "VALIDATION_ERROR",
     );
   });
@@ -249,19 +364,35 @@ describe("updateApplicationDetails", () => {
     const a = await create({ company: "IBM", title: "A" });
     const b = await create({ company: "IBM", title: "B" });
     const result = await services.updateApplicationDetails(
-      { requestId: randomUUID(), applicationId: a.applicationId, expectedVersion: 1, company: "Acme" },
+      {
+        requestId: randomUUID(),
+        applicationId: a.applicationId,
+        expectedVersion: 1,
+        company: "Acme",
+      },
       OWNER,
     );
     expect(result.changedFields).toEqual(["company"]);
-    expect((await services.getApplication({ applicationId: a.applicationId }, OWNER)).application.company).toBe("Acme");
-    expect((await services.getApplication({ applicationId: b.applicationId }, OWNER)).application.company).toBe("IBM");
+    expect(
+      (await services.getApplication({ applicationId: a.applicationId }, OWNER)).application
+        .company,
+    ).toBe("Acme");
+    expect(
+      (await services.getApplication({ applicationId: b.applicationId }, OWNER)).application
+        .company,
+    ).toBe("IBM");
     expect(repo.companies.map((c) => c.name).sort()).toEqual(["Acme", "IBM"]);
   });
 
   it("clearing a value with null is a change", async () => {
     const created = await create({ location: "Austin" });
     const result = await services.updateApplicationDetails(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, location: null },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        location: null,
+      },
       OWNER,
     );
     expect(result.changedFields).toEqual(["location"]);
@@ -273,12 +404,23 @@ describe("notes", () => {
   it("adds dated and undated notes, incrementing the version each time", async () => {
     const created = await create();
     const undated = await services.addApplicationNote(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, note: "Hello" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        note: "Hello",
+      },
       OWNER,
     );
     expect(undated).toMatchObject({ version: 2, after: { noteDate: null } });
     const dated = await services.addApplicationNote(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 2, note: "Dated", noteDate: "2026-09-20" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 2,
+        note: "Dated",
+        noteDate: "2026-09-20",
+      },
       OWNER,
     );
     expect(dated).toMatchObject({ version: 3, after: { noteDate: "2026-09-20" } });
@@ -290,23 +432,48 @@ describe("notes", () => {
   it("edits text and date, removes the date, and no-ops identical patches", async () => {
     const created = await create();
     const added = await services.addApplicationNote(
-      { requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, note: "Hello", noteDate: "2026-09-20" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        expectedVersion: 1,
+        note: "Hello",
+        noteDate: "2026-09-20",
+      },
       OWNER,
     );
     const noteId = added.noteId!;
     const text = await services.updateApplicationNote(
-      { requestId: randomUUID(), applicationId: created.applicationId, noteId, expectedVersion: 2, note: "Hello again" },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        noteId,
+        expectedVersion: 2,
+        note: "Hello again",
+      },
       OWNER,
     );
     expect(text).toMatchObject({ changedFields: ["note"], version: 3 });
     expect(text.after).toEqual({});
     const removeDate = await services.updateApplicationNote(
-      { requestId: randomUUID(), applicationId: created.applicationId, noteId, expectedVersion: 3, noteDate: null },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        noteId,
+        expectedVersion: 3,
+        noteDate: null,
+      },
       OWNER,
     );
     expect(removeDate).toMatchObject({ changedFields: ["noteDate"], version: 4 });
     const noop = await services.updateApplicationNote(
-      { requestId: randomUUID(), applicationId: created.applicationId, noteId, expectedVersion: 4, note: "Hello again", noteDate: null },
+      {
+        requestId: randomUUID(),
+        applicationId: created.applicationId,
+        noteId,
+        expectedVersion: 4,
+        note: "Hello again",
+        noteDate: null,
+      },
       OWNER,
     );
     expect(noop).toMatchObject({ noop: true, version: 4 });
@@ -320,13 +487,27 @@ describe("notes", () => {
     const created = await create();
     await expectError(
       services.updateApplicationNote(
-        { requestId: randomUUID(), applicationId: created.applicationId, noteId: randomUUID(), expectedVersion: 1, note: "x" },
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          noteId: randomUUID(),
+          expectedVersion: 1,
+          note: "x",
+        },
         OWNER,
       ),
       "NOT_FOUND",
     );
     await expectError(
-      services.addApplicationNote({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, note: "x" }, OTHER),
+      services.addApplicationNote(
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          expectedVersion: 1,
+          note: "x",
+        },
+        OTHER,
+      ),
       "NOT_FOUND",
     );
   });
@@ -348,7 +529,12 @@ describe("retry protection", () => {
   it("replays a status update even though its own commit bumped the version", async () => {
     const created = await create();
     const requestId = randomUUID();
-    const command = { requestId, applicationId: created.applicationId, expectedVersion: 1, status: "OA" as const };
+    const command = {
+      requestId,
+      applicationId: created.applicationId,
+      expectedVersion: 1,
+      status: "OA" as const,
+    };
     const first = await services.updateApplicationStatus(command, OWNER);
     const second = await services.updateApplicationStatus(command, OWNER);
     expect(second).toMatchObject({ replayed: true, version: 2, activityId: first.activityId });
@@ -359,9 +545,20 @@ describe("retry protection", () => {
   it("rejects a reused request id with a different command", async () => {
     const created = await create();
     const requestId = randomUUID();
-    await services.updateApplicationStatus({ requestId, applicationId: created.applicationId, expectedVersion: 1, status: "OA" }, OWNER);
+    await services.updateApplicationStatus(
+      { requestId, applicationId: created.applicationId, expectedVersion: 1, status: "OA" },
+      OWNER,
+    );
     await expectError(
-      services.updateApplicationStatus({ requestId, applicationId: created.applicationId, expectedVersion: 2, status: "INTERVIEW" }, OWNER),
+      services.updateApplicationStatus(
+        {
+          requestId,
+          applicationId: created.applicationId,
+          expectedVersion: 2,
+          status: "INTERVIEW",
+        },
+        OWNER,
+      ),
       "CONFLICT",
       "REQUEST_ID_REUSED",
     );
@@ -371,7 +568,10 @@ describe("retry protection", () => {
   it("keeps receipts owner-scoped", async () => {
     const requestId = randomUUID();
     await services.createApplication({ requestId, company: "IBM", title: "SWE" }, OWNER);
-    const other = await services.createApplication({ requestId, company: "IBM", title: "SWE" }, OTHER);
+    const other = await services.createApplication(
+      { requestId, company: "IBM", title: "SWE" },
+      OTHER,
+    );
     expect(other.replayed).toBe(false);
     expect(repo.applications).toHaveLength(2);
   });
@@ -380,14 +580,36 @@ describe("retry protection", () => {
 describe("ownership", () => {
   it("another user cannot read or mutate the owner's application", async () => {
     const created = await create();
-    await expectError(services.getApplication({ applicationId: created.applicationId }, OTHER), "NOT_FOUND");
-    await expectError(services.listApplicationActivity({ applicationId: created.applicationId }, OTHER), "NOT_FOUND");
     await expectError(
-      services.updateApplicationStatus({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, status: "OA" }, OTHER),
+      services.getApplication({ applicationId: created.applicationId }, OTHER),
       "NOT_FOUND",
     );
     await expectError(
-      services.updateApplicationDetails({ requestId: randomUUID(), applicationId: created.applicationId, expectedVersion: 1, priority: "HIGH" }, OTHER),
+      services.listApplicationActivity({ applicationId: created.applicationId }, OTHER),
+      "NOT_FOUND",
+    );
+    await expectError(
+      services.updateApplicationStatus(
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          expectedVersion: 1,
+          status: "OA",
+        },
+        OTHER,
+      ),
+      "NOT_FOUND",
+    );
+    await expectError(
+      services.updateApplicationDetails(
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          expectedVersion: 1,
+          priority: "HIGH",
+        },
+        OTHER,
+      ),
       "NOT_FOUND",
     );
     expect((await services.searchApplications({}, OTHER)).items).toHaveLength(0);
@@ -401,7 +623,10 @@ describe("atomicity", () => {
     repo.failBeforeActivity = true;
     const requestId = randomUUID();
     await expectError(
-      services.updateApplicationStatus({ requestId, applicationId: created.applicationId, expectedVersion: 1, status: "OA" }, OWNER),
+      services.updateApplicationStatus(
+        { requestId, applicationId: created.applicationId, expectedVersion: 1, status: "OA" },
+        OWNER,
+      ),
       "INTERNAL_ERROR",
     );
     expect(repo.applications[0]).toMatchObject({ status: "SAVED", version: 1 });
@@ -439,7 +664,13 @@ describe("import", () => {
       {
         requestId: randomUUID(),
         rows: [
-          { rowIndex: 1, company: "Datadog", title: "Backend", status: "APPLIED", note: "line1\nline2" },
+          {
+            rowIndex: 1,
+            company: "Datadog",
+            title: "Backend",
+            status: "APPLIED",
+            note: "line1\nline2",
+          },
           { rowIndex: 2, company: "Ramp", title: "Platform", appliedAt: "2026-09-01" },
         ],
       },
@@ -447,19 +678,34 @@ describe("import", () => {
     );
     expect(result).toMatchObject({ imported: 2 });
     expect(result.applicationIds).toHaveLength(2);
-    const first = await services.getApplication({ applicationId: result.applicationIds![0]! }, OWNER);
-    expect(first.application).toMatchObject({ status: "APPLIED", appliedAt: null, dateFound: null });
+    const first = await services.getApplication(
+      { applicationId: result.applicationIds![0]! },
+      OWNER,
+    );
+    expect(first.application).toMatchObject({
+      status: "APPLIED",
+      appliedAt: null,
+      dateFound: null,
+    });
     expect(first.notes.items[0]).toMatchObject({ body: "line1\nline2", noteDate: null });
     expect(first.activity.items[0]).toMatchObject({ type: "IMPORTED", actorType: "IMPORT" });
     expect(first.activity.items[0]!.metadata.noteId).toBe(first.notes.items[0]!.noteId);
-    const second = await services.getApplication({ applicationId: result.applicationIds![1]! }, OWNER);
+    const second = await services.getApplication(
+      { applicationId: result.applicationIds![1]! },
+      OWNER,
+    );
     expect(second.application.appliedAt).toBe("2026-09-01");
   });
 
   it("import_separate creates distinct records and a replay does not duplicate", async () => {
     const existing = await create({ company: "Acme", title: "SWE" });
     const requestId = randomUUID();
-    const command = { requestId, rows: [{ rowIndex: 1, company: "Acme", title: "SWE", duplicateChoice: "import_separate" as const }] };
+    const command = {
+      requestId,
+      rows: [
+        { rowIndex: 1, company: "Acme", title: "SWE", duplicateChoice: "import_separate" as const },
+      ],
+    };
     const result = await services.commitImport(command, OWNER);
     expect(result.applicationIds![0]).not.toBe(existing.applicationId);
     expect(repo.jobs).toHaveLength(2);
@@ -472,8 +718,25 @@ describe("import", () => {
     await create({ company: "IBM", title: "Software Engineer" });
     const preview = await services.previewImport(
       {
-        csvText: "Company,Role,Status,Date Applied\nibm,Software Engineer,applied,9/1/2026\nDatadog,Backend,ghosted,\n,Missing,,\nDatadog,backend,,\nDatadog,Backend,saved,\n",
-        mapping: { company: 0, title: 1, status: 2, priority: null, jobUrl: null, externalJobId: null, location: null, workArrangement: null, datePosted: null, dateFound: null, appliedAt: 3, source: null, resumeVersion: null, referral: null, note: null },
+        csvText:
+          "Company,Role,Status,Date Applied\nibm,Software Engineer,applied,9/1/2026\nDatadog,Backend,ghosted,\n,Missing,,\nDatadog,backend,,\nDatadog,Backend,saved,\n",
+        mapping: {
+          company: 0,
+          title: 1,
+          status: 2,
+          priority: null,
+          jobUrl: null,
+          externalJobId: null,
+          location: null,
+          workArrangement: null,
+          datePosted: null,
+          dateFound: null,
+          appliedAt: 3,
+          source: null,
+          resumeVersion: null,
+          referral: null,
+          note: null,
+        },
       },
       OWNER,
     );
@@ -492,7 +755,26 @@ describe("import", () => {
   it("previewImport requires the required mappings", async () => {
     await expectError(
       services.previewImport(
-        { csvText: "A\n1", mapping: { company: null, title: 0, status: null, priority: null, jobUrl: null, externalJobId: null, location: null, workArrangement: null, datePosted: null, dateFound: null, appliedAt: null, source: null, resumeVersion: null, referral: null, note: null } },
+        {
+          csvText: "A\n1",
+          mapping: {
+            company: null,
+            title: 0,
+            status: null,
+            priority: null,
+            jobUrl: null,
+            externalJobId: null,
+            location: null,
+            workArrangement: null,
+            datePosted: null,
+            dateFound: null,
+            appliedAt: null,
+            source: null,
+            resumeVersion: null,
+            referral: null,
+            note: null,
+          },
+        },
         OWNER,
       ),
       "VALIDATION_ERROR",
@@ -502,9 +784,26 @@ describe("import", () => {
 
 describe("search and summaries", () => {
   async function seed() {
-    const a = await create({ company: "IBM", title: "Backend Engineer", status: "APPLIED", appliedAt: "2026-09-01", priority: "HIGH" });
-    const b = await create({ company: "Datadog", title: "Backend Engineer", status: "SAVED", priority: "LOW" });
-    const c = await create({ company: "Acme", title: "Frontend", status: "REJECTED", appliedAt: "2026-08-15", priority: "MEDIUM" });
+    const a = await create({
+      company: "IBM",
+      title: "Backend Engineer",
+      status: "APPLIED",
+      appliedAt: "2026-09-01",
+      priority: "HIGH",
+    });
+    const b = await create({
+      company: "Datadog",
+      title: "Backend Engineer",
+      status: "SAVED",
+      priority: "LOW",
+    });
+    const c = await create({
+      company: "Acme",
+      title: "Frontend",
+      status: "REJECTED",
+      appliedAt: "2026-08-15",
+      priority: "MEDIUM",
+    });
     return { a, b, c };
   }
 
@@ -512,20 +811,32 @@ describe("search and summaries", () => {
     await seed();
     expect((await services.searchApplications({ text: "backend" }, OWNER)).items).toHaveLength(2);
     expect((await services.searchApplications({ text: "acme" }, OWNER)).items).toHaveLength(1);
-    expect((await services.searchApplications({ statuses: ["APPLIED", "SAVED"] }, OWNER)).items).toHaveLength(2);
-    expect((await services.searchApplications({ priorities: ["HIGH"] }, OWNER)).items[0]!.company).toBe("IBM");
-    expect((await services.searchApplications({ appliedFrom: "2026-08-20" }, OWNER)).items).toHaveLength(1);
+    expect(
+      (await services.searchApplications({ statuses: ["APPLIED", "SAVED"] }, OWNER)).items,
+    ).toHaveLength(2);
+    expect(
+      (await services.searchApplications({ priorities: ["HIGH"] }, OWNER)).items[0]!.company,
+    ).toBe("IBM");
+    expect(
+      (await services.searchApplications({ appliedFrom: "2026-08-20" }, OWNER)).items,
+    ).toHaveLength(1);
   });
 
   it("sorts by updated, applied (nulls last), company, and priority", async () => {
     await seed();
     const updated = await services.searchApplications({ sort: "updated" }, OWNER);
     expect(updated.items.map((i) => i.company)).toEqual(["Acme", "Datadog", "IBM"]);
-    const applied = await services.searchApplications({ sort: "applied", direction: "desc" }, OWNER);
+    const applied = await services.searchApplications(
+      { sort: "applied", direction: "desc" },
+      OWNER,
+    );
     expect(applied.items.map((i) => i.company)).toEqual(["IBM", "Acme", "Datadog"]);
     const company = await services.searchApplications({ sort: "company" }, OWNER);
     expect(company.items.map((i) => i.company)).toEqual(["Acme", "Datadog", "IBM"]);
-    const priority = await services.searchApplications({ sort: "priority", direction: "desc" }, OWNER);
+    const priority = await services.searchApplications(
+      { sort: "priority", direction: "desc" },
+      OWNER,
+    );
     expect(priority.items.map((i) => i.priority)).toEqual(["HIGH", "MEDIUM", "LOW"]);
   });
 
@@ -534,12 +845,21 @@ describe("search and summaries", () => {
     const page1 = await services.searchApplications({ limit: 2, sort: "company" }, OWNER);
     expect(page1.items).toHaveLength(2);
     expect(page1.hasMore).toBe(true);
-    const page2 = await services.searchApplications({ limit: 2, sort: "company", cursor: page1.nextCursor! }, OWNER);
+    const page2 = await services.searchApplications(
+      { limit: 2, sort: "company", cursor: page1.nextCursor! },
+      OWNER,
+    );
     expect(page2.items.map((i) => i.company)).toEqual(["IBM"]);
     expect(page2.hasMore).toBe(false);
     expect(page2.nextCursor).toBeNull();
-    await expectError(services.searchApplications({ limit: 2, sort: "updated", cursor: page1.nextCursor! }, OWNER), "VALIDATION_ERROR");
-    await expectError(services.searchApplications({ limit: 2, sort: "company", cursor: "garbage" }, OWNER), "VALIDATION_ERROR");
+    await expectError(
+      services.searchApplications({ limit: 2, sort: "updated", cursor: page1.nextCursor! }, OWNER),
+      "VALIDATION_ERROR",
+    );
+    await expectError(
+      services.searchApplications({ limit: 2, sort: "company", cursor: "garbage" }, OWNER),
+      "VALIDATION_ERROR",
+    );
   });
 
   it("omits notes and descriptions from search items", async () => {
@@ -552,14 +872,21 @@ describe("search and summaries", () => {
   it("counts statuses and lists stale active applications", async () => {
     const { a } = await seed();
     const counts = await services.getStatusCounts(OWNER);
-    expect(counts).toMatchObject({ total: 3, active: 2, byStatus: { APPLIED: 1, SAVED: 1, REJECTED: 1, OA: 0 } });
+    expect(counts).toMatchObject({
+      total: 3,
+      active: 2,
+      byStatus: { APPLIED: 1, SAVED: 1, REJECTED: 1, OA: 0 },
+    });
     // Fake repo timestamps are near 2026-09-21T15:00Z; the fixed clock's now() is 2026-09-21T12:00Z,
     // so treat everything as stale by looking far ahead.
     const summary = await services.getPipelineSummary({ staleAfterDays: 1 }, { ...OWNER });
     expect(summary.staleAfterDays).toBe(1);
     expect(summary.stale.every((s) => s.status !== "REJECTED")).toBe(true);
     // Move one application recently: a stale threshold in the past excludes it once we bump time.
-    await services.updateApplicationStatus({ requestId: randomUUID(), applicationId: a.applicationId, expectedVersion: 1, status: "OA" }, OWNER);
+    await services.updateApplicationStatus(
+      { requestId: randomUUID(), applicationId: a.applicationId, expectedVersion: 1, status: "OA" },
+      OWNER,
+    );
     const fresh = createTrackerServices({
       repository: repo,
       clock: { today: () => "2026-10-21", now: () => new Date("2026-10-21T12:00:00Z") },
@@ -567,12 +894,18 @@ describe("search and summaries", () => {
     const later = await fresh.getPipelineSummary({ staleAfterDays: 14, staleLimit: 5 }, OWNER);
     expect(later.stale.map((s) => s.company).sort()).toEqual(["Datadog", "IBM"]);
     expect(later.stale[0]!.company).toBe("Datadog");
-    await expectError(services.getPipelineSummary({ staleAfterDays: 0 }, OWNER), "VALIDATION_ERROR");
+    await expectError(
+      services.getPipelineSummary({ staleAfterDays: 0 }, OWNER),
+      "VALIDATION_ERROR",
+    );
   });
 
   it("candidate profile round-trips", async () => {
     expect(await services.getCandidateProfile(OWNER)).toBeNull();
-    const saved = await services.saveCandidateProfile({ fullName: "Drew", email: "", requiresSponsorship: false }, OWNER);
+    const saved = await services.saveCandidateProfile(
+      { fullName: "Drew", email: "", requiresSponsorship: false },
+      OWNER,
+    );
     expect(saved).toMatchObject({ fullName: "Drew", email: null, requiresSponsorship: false });
     expect(await services.getCandidateProfile(OTHER)).toBeNull();
     await expectError(services.saveCandidateProfile({ email: "bad" }, OWNER), "VALIDATION_ERROR");

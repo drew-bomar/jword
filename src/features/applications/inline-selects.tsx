@@ -78,10 +78,14 @@ export function InlineStatusSelect({
         );
       }}
     >
-      <SelectTrigger aria-label={`Status for ${label}: ${STATUS_LABELS[status]}`} className={cn(triggerClass, pending && "opacity-60")} size="sm">
+      <SelectTrigger
+        aria-label={`Status for ${label}: ${STATUS_LABELS[status]}`}
+        className={cn(triggerClass, pending && "opacity-60")}
+        size="sm"
+      >
         <StatusBadge status={status} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent position="popper" align="start">
         {APPLICATION_STATUSES.map((s) => (
           <SelectItem key={s} value={s}>
             {STATUS_LABELS[s]}
@@ -120,10 +124,14 @@ export function InlinePrioritySelect({
         );
       }}
     >
-      <SelectTrigger aria-label={`Priority for ${label}: ${PRIORITY_LABELS[priority]}`} className={cn(triggerClass, pending && "opacity-60")} size="sm">
+      <SelectTrigger
+        aria-label={`Priority for ${label}: ${PRIORITY_LABELS[priority]}`}
+        className={cn(triggerClass, pending && "opacity-60")}
+        size="sm"
+      >
         <PriorityBadge priority={priority} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent position="popper" align="start">
         {APPLICATION_PRIORITIES.map((p) => (
           <SelectItem key={p} value={p}>
             {PRIORITY_LABELS[p]}

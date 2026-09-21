@@ -21,7 +21,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createApplicationAction, updateDetailsAction } from "@/server/actions/applications";
 import type { ActionError } from "@/server/actions/result";
@@ -79,13 +85,21 @@ const EMPTY: ApplicationFormValues = {
   initialNote: "",
 };
 
-type Mode = { kind: "create"; today: string } | { kind: "edit"; application: ApplicationDetail; onSaved: () => void; onCancel: () => void };
+type Mode =
+  | { kind: "create"; today: string }
+  | { kind: "edit"; application: ApplicationDetail; onSaved: () => void; onCancel: () => void };
 
-function FieldError({ errors, name }: { errors: Record<string, string[]> | undefined; name: string }) {
+function FieldError({
+  errors,
+  name,
+}: {
+  errors: Record<string, string[]> | undefined;
+  name: string;
+}) {
   const messages = errors?.[name];
   if (!messages?.length) return null;
   return (
-    <p id={`${name}-error`} className="text-xs text-destructive" role="alert">
+    <p id={`${name}-error`} className="text-destructive text-xs" role="alert">
       {messages[0]}
     </p>
   );
@@ -97,7 +111,13 @@ function FieldError({ errors, name }: { errors: Record<string, string[]> | undef
  */
 export function ApplicationForm({ mode }: { mode: Mode }) {
   const router = useRouter();
-  const initial = useMemo(() => (mode.kind === "edit" ? valuesFromApplication(mode.application) : { ...EMPTY, dateFound: mode.today }), [mode]);
+  const initial = useMemo(
+    () =>
+      mode.kind === "edit"
+        ? valuesFromApplication(mode.application)
+        : { ...EMPTY, dateFound: mode.today },
+    [mode],
+  );
   const [values, setValues] = useState<ApplicationFormValues>(initial);
   const [error, setError] = useState<ActionError | null>(null);
   const [candidates, setCandidates] = useState<DuplicateCandidate[] | null>(null);
@@ -127,7 +147,10 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
           workArrangement: values.workArrangement,
           // Explicit values or explicit null: the form always shows the resolved date.
           dateFound: textOrNull(values.dateFound),
-          appliedAt: values.status === "APPLIED" && values.appliedAt.trim() === "" ? undefined : textOrNull(values.appliedAt),
+          appliedAt:
+            values.status === "APPLIED" && values.appliedAt.trim() === ""
+              ? undefined
+              : textOrNull(values.appliedAt),
           source: textOrNull(values.source),
           resumeVersion: textOrNull(values.resumeVersion),
           referral: textOrNull(values.referral),
@@ -187,7 +210,8 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
         <Alert variant="destructive" role="alert">
           <AlertTitle>This application changed since you opened it.</AlertTitle>
           <AlertDescription>
-            Refresh before saving. Your unsaved input stays in the form so you can review it against the latest values.
+            Refresh before saving. Your unsaved input stays in the form so you can review it against
+            the latest values.
           </AlertDescription>
           <div className="mt-2 flex gap-2">
             <Button
@@ -220,13 +244,21 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
                   <Link href={`/applications/${c.applicationId}`} className="underline">
                     {c.company} — {c.title}
                   </Link>{" "}
-                  <span className="text-muted-foreground">({STATUS_LABELS[c.status as ApplicationStatus] ?? c.status})</span>
+                  <span className="text-muted-foreground">
+                    ({STATUS_LABELS[c.status as ApplicationStatus] ?? c.status})
+                  </span>
                 </li>
               ))}
             </ul>
           </AlertDescription>
           <div className="mt-3 flex gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={(e) => submit(e, true)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={(e) => submit(e, true)}
+            >
               Create anyway as a separate application
             </Button>
           </div>
@@ -236,32 +268,71 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="company">Company *</Label>
-          <Input id="company" name="company" required value={values.company} onChange={(e) => set("company", e.target.value)} aria-invalid={Boolean(fieldErrors?.company)} aria-describedby={fieldErrors?.company ? "company-error" : undefined} autoFocus={!isEdit} />
+          <Input
+            id="company"
+            name="company"
+            required
+            value={values.company}
+            onChange={(e) => set("company", e.target.value)}
+            aria-invalid={Boolean(fieldErrors?.company)}
+            aria-describedby={fieldErrors?.company ? "company-error" : undefined}
+            autoFocus={!isEdit}
+          />
           <FieldError errors={fieldErrors} name="company" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="title">Role *</Label>
-          <Input id="title" name="title" required value={values.title} onChange={(e) => set("title", e.target.value)} aria-invalid={Boolean(fieldErrors?.title)} aria-describedby={fieldErrors?.title ? "title-error" : undefined} />
+          <Input
+            id="title"
+            name="title"
+            required
+            value={values.title}
+            onChange={(e) => set("title", e.target.value)}
+            aria-invalid={Boolean(fieldErrors?.title)}
+            aria-describedby={fieldErrors?.title ? "title-error" : undefined}
+          />
           <FieldError errors={fieldErrors} name="title" />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="jobUrl">Job URL</Label>
-          <Input id="jobUrl" name="jobUrl" type="url" inputMode="url" placeholder="https://" value={values.jobUrl} onChange={(e) => set("jobUrl", e.target.value)} aria-invalid={Boolean(fieldErrors?.jobUrl)} />
+          <Input
+            id="jobUrl"
+            name="jobUrl"
+            type="url"
+            inputMode="url"
+            placeholder="https://"
+            value={values.jobUrl}
+            onChange={(e) => set("jobUrl", e.target.value)}
+            aria-invalid={Boolean(fieldErrors?.jobUrl)}
+          />
           <FieldError errors={fieldErrors} name="jobUrl" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="externalJobId">External job ID</Label>
-          <Input id="externalJobId" name="externalJobId" value={values.externalJobId} onChange={(e) => set("externalJobId", e.target.value)} />
+          <Input
+            id="externalJobId"
+            name="externalJobId"
+            value={values.externalJobId}
+            onChange={(e) => set("externalJobId", e.target.value)}
+          />
           <FieldError errors={fieldErrors} name="externalJobId" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="location">Location</Label>
-          <Input id="location" name="location" value={values.location} onChange={(e) => set("location", e.target.value)} />
+          <Input
+            id="location"
+            name="location"
+            value={values.location}
+            onChange={(e) => set("location", e.target.value)}
+          />
           <FieldError errors={fieldErrors} name="location" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="workArrangement">Work arrangement</Label>
-          <Select value={values.workArrangement} onValueChange={(v) => set("workArrangement", v as WorkArrangement)}>
+          <Select
+            value={values.workArrangement}
+            onValueChange={(v) => set("workArrangement", v as WorkArrangement)}
+          >
             <SelectTrigger id="workArrangement" className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -277,7 +348,10 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
         {!isEdit ? (
           <div className="space-y-1.5">
             <Label htmlFor="status">Status</Label>
-            <Select value={values.status} onValueChange={(v) => set("status", v as ApplicationStatus)}>
+            <Select
+              value={values.status}
+              onValueChange={(v) => set("status", v as ApplicationStatus)}
+            >
               <SelectTrigger id="status" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -293,7 +367,10 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
         ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="priority">Priority</Label>
-          <Select value={values.priority} onValueChange={(v) => set("priority", v as ApplicationPriority)}>
+          <Select
+            value={values.priority}
+            onValueChange={(v) => set("priority", v as ApplicationPriority)}
+          >
             <SelectTrigger id="priority" className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -308,13 +385,28 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="dateFound">Date found</Label>
-          <Input id="dateFound" name="dateFound" type="date" value={values.dateFound} onChange={(e) => set("dateFound", e.target.value)} aria-invalid={Boolean(fieldErrors?.dateFound)} />
+          <Input
+            id="dateFound"
+            name="dateFound"
+            type="date"
+            value={values.dateFound}
+            onChange={(e) => set("dateFound", e.target.value)}
+            aria-invalid={Boolean(fieldErrors?.dateFound)}
+          />
           <FieldError errors={fieldErrors} name="dateFound" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="appliedAt">Date applied</Label>
-          <Input id="appliedAt" name="appliedAt" type="date" value={values.appliedAt} onChange={(e) => set("appliedAt", e.target.value)} aria-invalid={Boolean(fieldErrors?.appliedAt)} aria-describedby="appliedAt-hint" />
-          <p id="appliedAt-hint" className="text-xs text-muted-foreground">
+          <Input
+            id="appliedAt"
+            name="appliedAt"
+            type="date"
+            value={values.appliedAt}
+            onChange={(e) => set("appliedAt", e.target.value)}
+            aria-invalid={Boolean(fieldErrors?.appliedAt)}
+            aria-describedby="appliedAt-hint"
+          />
+          <p id="appliedAt-hint" className="text-muted-foreground text-xs">
             {!isEdit && values.status === "APPLIED" && values.appliedAt.trim() === ""
               ? "Blank with status Applied: defaults to today (Central time). Enter a date to override."
               : "Leave blank if unknown."}
@@ -323,24 +415,50 @@ export function ApplicationForm({ mode }: { mode: Mode }) {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="source">Source</Label>
-          <Input id="source" name="source" placeholder="LinkedIn, referral, company site…" value={values.source} onChange={(e) => set("source", e.target.value)} />
+          <Input
+            id="source"
+            name="source"
+            placeholder="LinkedIn, referral, company site…"
+            value={values.source}
+            onChange={(e) => set("source", e.target.value)}
+          />
           <FieldError errors={fieldErrors} name="source" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="resumeVersion">Resume version</Label>
-          <Input id="resumeVersion" name="resumeVersion" placeholder="e.g. backend-v3" value={values.resumeVersion} onChange={(e) => set("resumeVersion", e.target.value)} />
+          <Input
+            id="resumeVersion"
+            name="resumeVersion"
+            placeholder="e.g. backend-v3"
+            value={values.resumeVersion}
+            onChange={(e) => set("resumeVersion", e.target.value)}
+          />
           <FieldError errors={fieldErrors} name="resumeVersion" />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="referral">Referral</Label>
-          <Input id="referral" name="referral" placeholder="Who referred you, if anyone" value={values.referral} onChange={(e) => set("referral", e.target.value)} />
+          <Input
+            id="referral"
+            name="referral"
+            placeholder="Who referred you, if anyone"
+            value={values.referral}
+            onChange={(e) => set("referral", e.target.value)}
+          />
           <FieldError errors={fieldErrors} name="referral" />
         </div>
         {!isEdit ? (
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="initialNote">Initial note</Label>
-            <Textarea id="initialNote" name="initialNote" rows={3} value={values.initialNote} onChange={(e) => set("initialNote", e.target.value)} />
-            <p className="text-xs text-muted-foreground">Saved as the first note in the Notes section. You can add more later.</p>
+            <Textarea
+              id="initialNote"
+              name="initialNote"
+              rows={3}
+              value={values.initialNote}
+              onChange={(e) => set("initialNote", e.target.value)}
+            />
+            <p className="text-muted-foreground text-xs">
+              Saved as the first note in the Notes section. You can add more later.
+            </p>
             <FieldError errors={fieldErrors} name="initialNote" />
           </div>
         ) : null}

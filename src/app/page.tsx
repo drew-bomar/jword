@@ -62,7 +62,7 @@ export default async function ApplicationsPage({ searchParams }: PageProps<"/">)
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Applications</h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {counts.total} tracked · {counts.active} active
             </p>
           </div>

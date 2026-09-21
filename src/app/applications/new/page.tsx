@@ -15,7 +15,9 @@ export default async function NewApplicationPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Add application</h1>
-          <p className="text-sm text-muted-foreground">Only company and role are required. Everything else can be filled in later.</p>
+          <p className="text-muted-foreground text-sm">
+            Only company and role are required. Everything else can be filled in later.
+          </p>
         </div>
         <ApplicationForm mode={{ kind: "create", today }} />
       </div>

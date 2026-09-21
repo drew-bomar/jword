@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { APPLICATION_STATUSES, STATUS_LABELS, type ApplicationStatus, type StatusCounts } from "@jword/core/browser";
+import {
+  APPLICATION_STATUSES,
+  STATUS_LABELS,
+  type ApplicationStatus,
+  type StatusCounts,
+} from "@jword/core/browser";
 import { cn } from "@/lib/utils";
 import type { Filters } from "./filters-bar";
 
@@ -35,13 +40,15 @@ export function StageCounts({
                 href={hrefFor(filters, active ? "" : status)}
                 aria-pressed={active}
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                  "hover:bg-muted focus-visible:ring-ring/50 inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors focus-visible:ring-3 focus-visible:outline-none",
                   active ? "border-foreground/40 bg-muted" : "border-border",
                   counts.byStatus[status] === 0 && !active && "text-muted-foreground",
                 )}
               >
                 <span>{STATUS_LABELS[status]}</span>
-                <span className="rounded bg-background px-1 font-mono text-[11px] tabular-nums">{counts.byStatus[status]}</span>
+                <span className="bg-background rounded px-1 font-mono text-[11px] tabular-nums">
+                  {counts.byStatus[status]}
+                </span>
               </Link>
             </li>
           );

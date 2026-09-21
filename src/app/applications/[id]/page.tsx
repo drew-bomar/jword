@@ -27,7 +27,10 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
 
   let view;
   try {
-    view = await services.getApplication({ applicationId: id, notesLimit: 50, activityLimit: 50 }, session.actor);
+    view = await services.getApplication(
+      { applicationId: id, notesLimit: 50, activityLimit: 50 },
+      session.actor,
+    );
   } catch (error) {
     if (error instanceof JwordError && error.code === "NOT_FOUND") notFound();
     throw error;
@@ -52,7 +55,7 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
     <AppShell email={session.email}>
       <div className="space-y-6">
         <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-2">
             <Link href="/">
               <ArrowLeftIcon data-icon="inline-start" aria-hidden />
               Applications
@@ -62,7 +65,7 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
 
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 space-y-1">
-            <p className="text-sm text-muted-foreground">{application.company}</p>
+            <p className="text-muted-foreground text-sm">{application.company}</p>
             <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
               <span>{application.title}</span>
               {application.jobUrl ? (
@@ -70,7 +73,7 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
                   href={application.jobUrl}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="inline-flex items-center gap-1 text-sm font-normal text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm font-normal"
                 >
                   Posting
                   <ExternalLinkIcon className="size-3.5" aria-hidden />
@@ -78,8 +81,18 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
               ) : null}
             </h1>
             <div className="flex flex-wrap items-center gap-3 pt-1">
-              <InlineStatusSelect applicationId={application.applicationId} version={application.version} status={application.status} label={label} />
-              <InlinePrioritySelect applicationId={application.applicationId} version={application.version} priority={application.priority} label={label} />
+              <InlineStatusSelect
+                applicationId={application.applicationId}
+                version={application.version}
+                status={application.status}
+                label={label}
+              />
+              <InlinePrioritySelect
+                applicationId={application.applicationId}
+                version={application.version}
+                priority={application.priority}
+                label={label}
+              />
               <span className="sr-only">
                 Current status <StatusBadge status={application.status} />
               </span>
@@ -95,7 +108,7 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
             {facts.map(([term, value]) => (
               <div key={term} className="space-y-0.5">
-                <dt className="text-xs text-muted-foreground">{term}</dt>
+                <dt className="text-muted-foreground text-xs">{term}</dt>
                 <dd className={isIsoDate(String(value)) ? "tabular-nums" : ""}>{value}</dd>
               </div>
             ))}
@@ -103,7 +116,12 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
         </section>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <NotesSection applicationId={application.applicationId} version={application.version} notes={notes.items} hasMore={notes.hasMore} />
+          <NotesSection
+            applicationId={application.applicationId}
+            version={application.version}
+            notes={notes.items}
+            hasMore={notes.hasMore}
+          />
           <div className="space-y-3">
             <Separator className="lg:hidden" />
             <Timeline items={activity.items} hasMore={activity.hasMore} />

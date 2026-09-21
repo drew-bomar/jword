@@ -70,18 +70,18 @@ SYSTEM
 
 ### `companies`
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | primary key |
-| `user_id` | uuid | owner |
-| `name` | text | required display name |
-| `normalized_name` | text | required; trim/collapse whitespace and lowercase only; retain punctuation and legal suffixes |
-| `website_url` | text | nullable |
-| `target_company` | boolean | default false |
-| `interest_level` | smallint | nullable, check 1-5 |
-| `notes` | text | nullable |
-| `created_at` | timestamptz | default now |
-| `updated_at` | timestamptz | default now |
+| Column            | Type        | Notes                                                                                        |
+| ----------------- | ----------- | -------------------------------------------------------------------------------------------- |
+| `id`              | uuid        | primary key                                                                                  |
+| `user_id`         | uuid        | owner                                                                                        |
+| `name`            | text        | required display name                                                                        |
+| `normalized_name` | text        | required; trim/collapse whitespace and lowercase only; retain punctuation and legal suffixes |
+| `website_url`     | text        | nullable                                                                                     |
+| `target_company`  | boolean     | default false                                                                                |
+| `interest_level`  | smallint    | nullable, check 1-5                                                                          |
+| `notes`           | text        | nullable                                                                                     |
+| `created_at`      | timestamptz | default now                                                                                  |
+| `updated_at`      | timestamptz | default now                                                                                  |
 
 Constraint/index:
 
@@ -91,22 +91,22 @@ Constraint/index:
 
 ### `jobs`
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | primary key |
-| `user_id` | uuid | owner |
-| `company_id` | uuid | required; composite FK `(user_id, company_id)` to companies `(user_id, id)` |
-| `title` | text | required |
-| `normalized_title` | text | matching/import helper |
-| `job_url` | text | nullable |
-| `external_job_id` | text | nullable |
-| `location` | text | nullable |
-| `work_arrangement` | enum | default UNKNOWN |
-| `description` | text | nullable; manual storage only in v1 |
-| `date_posted` | date | nullable |
-| `source` | text | nullable |
-| `created_at` | timestamptz | default now |
-| `updated_at` | timestamptz | default now |
+| Column             | Type        | Notes                                                                       |
+| ------------------ | ----------- | --------------------------------------------------------------------------- |
+| `id`               | uuid        | primary key                                                                 |
+| `user_id`          | uuid        | owner                                                                       |
+| `company_id`       | uuid        | required; composite FK `(user_id, company_id)` to companies `(user_id, id)` |
+| `title`            | text        | required                                                                    |
+| `normalized_title` | text        | matching/import helper                                                      |
+| `job_url`          | text        | nullable                                                                    |
+| `external_job_id`  | text        | nullable                                                                    |
+| `location`         | text        | nullable                                                                    |
+| `work_arrangement` | enum        | default UNKNOWN                                                             |
+| `description`      | text        | nullable; manual storage only in v1                                         |
+| `date_posted`      | date        | nullable                                                                    |
+| `source`           | text        | nullable                                                                    |
+| `created_at`       | timestamptz | default now                                                                 |
+| `updated_at`       | timestamptz | default now                                                                 |
 
 Indexes:
 
@@ -120,21 +120,21 @@ Do not enforce company + title, job URL, or external ID uniqueness because compa
 
 ### `applications`
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | primary key |
-| `user_id` | uuid | owner |
-| `job_id` | uuid | required; composite FK `(user_id, job_id)` to jobs `(user_id, id)` |
-| `version` | integer | not null, default 1, check >= 1; increments on each meaningful application change |
-| `status` | application_status | default SAVED |
-| `priority` | application_priority | default MEDIUM |
-| `date_found` | date | nullable |
-| `applied_at` | date | nullable |
-| `last_activity_at` | timestamptz | default now; time a meaningful change is recorded, independent of a backdated event or note label |
-| `resume_version` | text | nullable reference label only; no file storage in v1 |
-| `referral` | text | nullable free-text summary |
-| `created_at` | timestamptz | default now |
-| `updated_at` | timestamptz | default now |
+| Column             | Type                 | Notes                                                                                             |
+| ------------------ | -------------------- | ------------------------------------------------------------------------------------------------- |
+| `id`               | uuid                 | primary key                                                                                       |
+| `user_id`          | uuid                 | owner                                                                                             |
+| `job_id`           | uuid                 | required; composite FK `(user_id, job_id)` to jobs `(user_id, id)`                                |
+| `version`          | integer              | not null, default 1, check >= 1; increments on each meaningful application change                 |
+| `status`           | application_status   | default SAVED                                                                                     |
+| `priority`         | application_priority | default MEDIUM                                                                                    |
+| `date_found`       | date                 | nullable                                                                                          |
+| `applied_at`       | date                 | nullable                                                                                          |
+| `last_activity_at` | timestamptz          | default now; time a meaningful change is recorded, independent of a backdated event or note label |
+| `resume_version`   | text                 | nullable reference label only; no file storage in v1                                              |
+| `referral`         | text                 | nullable free-text summary                                                                        |
+| `created_at`       | timestamptz          | default now                                                                                       |
+| `updated_at`       | timestamptz          | default now                                                                                       |
 
 Constraints/indexes:
 
@@ -153,15 +153,15 @@ When the user explicitly imports a flagged duplicate as a separate application, 
 
 One row per individual note in the application's single Notes section. This replaces `applications.notes` and note bodies stored only as timeline activities. See [decision 012](decisions/012-single-notes-section.md).
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | primary key |
-| `user_id` | uuid | owner; required FK to auth.users |
-| `application_id` | uuid | required; composite FK `(user_id, application_id)` to applications `(user_id, id)` |
-| `body` | text | required, nonblank note text |
-| `note_date` | date | optional user-selected date label; default null |
-| `created_at` | timestamptz | actual insertion time, default now |
-| `updated_at` | timestamptz | actual latest edit time, default now |
+| Column           | Type        | Notes                                                                              |
+| ---------------- | ----------- | ---------------------------------------------------------------------------------- |
+| `id`             | uuid        | primary key                                                                        |
+| `user_id`        | uuid        | owner; required FK to auth.users                                                   |
+| `application_id` | uuid        | required; composite FK `(user_id, application_id)` to applications `(user_id, id)` |
+| `body`           | text        | required, nonblank note text                                                       |
+| `note_date`      | date        | optional user-selected date label; default null                                    |
+| `created_at`     | timestamptz | actual insertion time, default now                                                 |
+| `updated_at`     | timestamptz | actual latest edit time, default now                                               |
 
 Index `(user_id, application_id, created_at desc, id)` for stable note ordering. Both text and date are editable through narrow add/update note functions; changing or removing the date does not rewrite creation time. Notes inherit owner-scoped RLS, function-only writes, application version checks, and retry protection. Note deletion remains outside v1.
 
@@ -169,17 +169,17 @@ Index `(user_id, application_id, created_at desc, id)` for stable note ordering.
 
 Append-only through approved mutation functions; direct authenticated writes are denied.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | primary key |
-| `user_id` | uuid | owner |
-| `application_id` | uuid | required; composite FK `(user_id, application_id)` to applications `(user_id, id)` on delete cascade |
-| `type` | activity_type | required |
-| `actor_type` | actor_type | required |
-| `summary` | text | concise human-readable event |
-| `metadata` | jsonb | structured before/after or import context; default `{}` |
-| `occurred_at` | timestamptz | event time, default now |
-| `created_at` | timestamptz | insertion time, default now |
+| Column           | Type          | Notes                                                                                                |
+| ---------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| `id`             | uuid          | primary key                                                                                          |
+| `user_id`        | uuid          | owner                                                                                                |
+| `application_id` | uuid          | required; composite FK `(user_id, application_id)` to applications `(user_id, id)` on delete cascade |
+| `type`           | activity_type | required                                                                                             |
+| `actor_type`     | actor_type    | required                                                                                             |
+| `summary`        | text          | concise human-readable event                                                                         |
+| `metadata`       | jsonb         | structured before/after or import context; default `{}`                                              |
+| `occurred_at`    | timestamptz   | event time, default now                                                                              |
+| `created_at`     | timestamptz   | insertion time, default now                                                                          |
 
 Indexes:
 
@@ -209,20 +209,20 @@ Note additions and edits produce NOTE_ADDED and NOTE_UPDATED activities with a s
 
 Small internal receipt table for retry protection, approved in [decision 009](decisions/009-mutation-retry-protection.md). It is not an additional product feature or activity timeline.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `user_id` | uuid | owner; not null, FK to auth.users |
-| `request_id` | uuid | caller-generated ID, reused for retries of the same command |
-| `operation` | text | validated operation name |
-| `input_hash` | text | fingerprint of the canonical validated command and actor type, including expected version and import choices, before time-dependent defaults |
-| `result` | jsonb | minimal safe successful result, including no-op results; no raw notes, CSV contents, or secrets |
-| `created_at` | timestamptz | default now |
+| Column       | Type        | Notes                                                                                                                                        |
+| ------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`    | uuid        | owner; not null, FK to auth.users                                                                                                            |
+| `request_id` | uuid        | caller-generated ID, reused for retries of the same command                                                                                  |
+| `operation`  | text        | validated operation name                                                                                                                     |
+| `input_hash` | text        | fingerprint of the canonical validated command and actor type, including expected version and import choices, before time-dependent defaults |
+| `result`     | jsonb       | minimal safe successful result, including no-op results; no raw notes, CSV contents, or secrets                                              |
+| `created_at` | timestamptz | default now                                                                                                                                  |
 
 Primary key: `(user_id, request_id)`. Enable RLS and keep receipts internal to the mutation functions, with no direct client writes. Commit a receipt in the same transaction as the operation's primary changes and activity. For imports, one receipt covers the entire selected batch. Retain receipts for v1; no automatic expiry or cleanup job is required.
 
-## Deferred candidate-profile storage
+### `candidate_profiles`
 
-Do not create `candidate_profiles` or placeholder profile fields in v1. The owner deferred this feature on 2026-09-20 until job recommendations or application autofill require it. Define its fields and permissions when that future feature is approved; see the deferred decision triggers in `V1_SCOPE.md`.
+Included in the MVP at the owner's request on 2026-09-21 ([decision 014](decisions/014-mvp-implementation-deviations.md)). One row per user, primary key `user_id`; columns `full_name`, `email`, `phone`, `location`, `linkedin_url`, `github_url`, `portfolio_url`, `school`, `degree`, `graduation_date` (date), `work_authorization`, `requires_sponsorship` (nullable boolean), timestamps. Owner-only RLS select; writes only through `public.save_candidate_profile(p_owner_id, p_command)`. No activity timeline and no MCP tool.
 
 ## RLS and write permissions
 
@@ -249,6 +249,23 @@ Test at minimum:
 - cross-owner foreign-key combinations fail both through services and through direct database constraint tests
 
 The MCP service-role path bypasses RLS, so service-layer owner checks and repository filters remain mandatory. Treat RLS as defense in depth, not the only authorization mechanism.
+
+## Implemented function catalog
+
+All public wrappers are `security definer` with `search_path = ''`, callable by `authenticated` and `service_role` only, and delegate to helpers in the private `jword` schema:
+
+| Function                                                                    | Purpose                                                                                                                     |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `create_application(p_owner_id, p_actor, p_request_id, p_command, p_today)` | company match-or-create, job, application, optional initial note, CREATED activity; duplicate check unless `allowDuplicate` |
+| `update_application_status(...)`                                            | status and/or applied date; STATUS_CHANGED or DETAILS_UPDATED; no-op when unchanged                                         |
+| `update_application_details(...)`                                           | allowlisted application and job fields incl. company relink; DETAILS_UPDATED with before/after                              |
+| `add_application_note(...)` / `update_application_note(...)`                | notes with optional date labels; NOTE_ADDED / NOTE_UPDATED                                                                  |
+| `import_applications(p_owner_id, p_actor, p_request_id, p_command)`         | all-or-nothing batch of up to 500 rows; no `p_today` because imports never receive date defaults                            |
+| `save_candidate_profile(p_owner_id, p_command)`                             | upsert of the profile row                                                                                                   |
+
+Owner resolution: with a session, `auth.uid()` wins and a mismatching `p_owner_id` is `FORBIDDEN`; without a session only `service_role` may pass an explicit owner. Errors use SQLSTATEs `JW401/JW403/JW404/JW409/JW422/JW42I`, with the reason in `HINT` and JSON in `DETAIL`; `packages/core/src/repositories/errors.ts` maps them to typed errors.
+
+The read model for the table and search is the `application_overview` view (`security_invoker = true`, so RLS still applies).
 
 ## Atomic mutation contract
 

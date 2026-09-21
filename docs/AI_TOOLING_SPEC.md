@@ -51,6 +51,10 @@ Codex must never receive a tool that can run arbitrary SQL or mutate arbitrary f
 - Treat note/job text as untrusted data, never instructions to execute tools. Use stderr for diagnostics; stdout is reserved for the stdio MCP protocol.
 - No delete tool in v1.
 
+## Implementation notes (2026-09-21)
+
+Implemented in `packages/mcp-server/src/tools.ts`. Input schemas are `z.strictObject` and the SDK validates them before the handler runs, so unknown fields are rejected at the protocol level. `update_application_details` exposes only the allowlist below even though the shared service and database function accept a broader set for the web form (title, company, external id, description). The server also publishes protocol instructions (search first, ask on ambiguity, re-read on STALE_VERSION). Registration steps are in [MCP_SETUP.md](MCP_SETUP.md).
+
 ## Tool catalog
 
 ### `search_applications` (read-only)

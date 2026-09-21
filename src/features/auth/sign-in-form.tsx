@@ -71,9 +71,9 @@ export function SignInForm({ initialError }: { initialError: string | null }) {
         </form>
       ) : (
         <form onSubmit={submitCode} className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            We sent a code to <span className="font-medium text-foreground">{email}</span>. Enter it below, or open the
-            link in the email on this device.
+          <p className="text-muted-foreground text-sm">
+            We sent a code to <span className="text-foreground font-medium">{email}</span>. Enter it
+            below, or open the link in the email on this device.
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="token">One-time code</Label>
@@ -92,7 +92,13 @@ export function SignInForm({ initialError }: { initialError: string | null }) {
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "Verifying…" : "Sign in"}
           </Button>
-          <Button type="button" variant="ghost" className="w-full" onClick={() => setStep("email")} disabled={pending}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => setStep("email")}
+            disabled={pending}
+          >
             Use a different email
           </Button>
         </form>

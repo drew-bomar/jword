@@ -12,7 +12,7 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - Supabase project integration
 - authentication for one owner account
 - database migrations, generated types, and Row Level Security
-- local web development connected to hosted Supabase, with deployment-ready environment configuration; no required local Supabase database or Docker setup
+- local web development against a local Supabase stack (Docker) for automated tests, and the hosted Supabase project for real use; deployment-ready environment configuration
 
 ### Tracker
 
@@ -49,7 +49,6 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - embedded chat UI
 - OpenAI, Anthropic, or other paid model API calls
 - user-supplied API keys
-- candidate-profile storage and profile settings
 - personalized job recommendations
 - automatic job discovery or scraping
 - automated job submission
@@ -69,7 +68,7 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 
 ## Guardrails against scope creep
 
-- Candidate profiles are deferred entirely, including storage and settings. Add them only when a future job-recommendation or application-autofill feature needs them; do not build placeholder tables in v1. Approved by the owner on 2026-09-20.
+- A minimal candidate profile (one table, one settings form, no MCP tool) was added on 2026-09-21 at the owner's request for the one-shot build; see [decision 014](decisions/014-mvp-implementation-deviations.md). Recommendations and autofill remain out of scope.
 - Activity history is required; generalized event sourcing is not.
 - Basic counts are allowed; a separate analytics product is not.
 - MCP tools are required; a custom agent runtime or in-app interpreter is not.
@@ -97,12 +96,12 @@ v1 is complete when all of the following are true:
 
 Revisit these only when the trigger occurs:
 
-| Decision | Trigger |
-| --- | --- |
-| Embedded chat/provider abstraction | The terminal/Codex workflow is proven and an in-app chat is still valuable |
-| Candidate profile | An approved job-recommendation or application-autofill feature needs reusable candidate information |
-| Job recommendations | The tracker is stable and the owner wants help finding suitable opportunities; define profile requirements then |
+| Decision                               | Trigger                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Embedded chat/provider abstraction     | The terminal/Codex workflow is proven and an in-app chat is still valuable                                         |
+| Candidate profile                      | An approved job-recommendation or application-autofill feature needs reusable candidate information                |
+| Job recommendations                    | The tracker is stable and the owner wants help finding suitable opportunities; define profile requirements then    |
 | Application autofill/browser extension | Repeatedly entering application information becomes a priority; design the candidate profile alongside the feature |
-| Interview workspace | Interview volume makes separate preparation state useful |
-| Email/calendar integration | Manual timeline upkeep becomes unreliable |
-| Multi-user/SaaS architecture | A real second user is invited |
+| Interview workspace                    | Interview volume makes separate preparation state useful                                                           |
+| Email/calendar integration             | Manual timeline upkeep becomes unreliable                                                                          |
+| Multi-user/SaaS architecture           | A real second user is invited                                                                                      |

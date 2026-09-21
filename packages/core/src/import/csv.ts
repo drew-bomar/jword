@@ -79,7 +79,9 @@ export function parseCsv(text: string): ParsedCsv {
   if (!headerRecord || headerRecord.every((h) => h.trim() === "")) {
     throw new JwordError("VALIDATION_ERROR", "CSV has no header row.");
   }
-  const headers = headerRecord.map((h, index) => (h.trim() === "" ? `Column ${index + 1}` : h.trim()));
+  const headers = headerRecord.map((h, index) =>
+    h.trim() === "" ? `Column ${index + 1}` : h.trim(),
+  );
 
   let blankRowsSkipped = 0;
   const rows: string[][] = [];

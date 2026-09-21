@@ -14,11 +14,15 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const email = process.env.JWORD_OWNER_EMAIL;
 
 if (!url || !serviceKey || !email) {
-  console.error("Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and JWORD_OWNER_EMAIL (in .env.local or the shell).");
+  console.error(
+    "Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and JWORD_OWNER_EMAIL (in .env.local or the shell).",
+  );
   process.exit(1);
 }
 
-const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+const admin = createClient(url, serviceKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 async function main() {
   const { data: page, error: listError } = await admin.auth.admin.listUsers({ perPage: 1000 });

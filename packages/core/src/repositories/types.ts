@@ -37,18 +37,44 @@ export interface PageRequest {
  * because the MCP path uses a credential that bypasses RLS.
  */
 export interface TrackerRepository {
-  searchApplications(userId: string, query: Required<Pick<SearchQuery, "limit">> & SearchQuery): Promise<Page<ApplicationOverview>>;
+  searchApplications(
+    userId: string,
+    query: Required<Pick<SearchQuery, "limit">> & SearchQuery,
+  ): Promise<Page<ApplicationOverview>>;
   getApplication(userId: string, applicationId: string): Promise<ApplicationDetail | null>;
-  listNotes(userId: string, applicationId: string, page: PageRequest): Promise<Page<ApplicationNote>>;
-  listActivity(userId: string, applicationId: string, page: PageRequest): Promise<Page<ApplicationActivity>>;
+  listNotes(
+    userId: string,
+    applicationId: string,
+    page: PageRequest,
+  ): Promise<Page<ApplicationNote>>;
+  listActivity(
+    userId: string,
+    applicationId: string,
+    page: PageRequest,
+  ): Promise<Page<ApplicationActivity>>;
   listStatuses(userId: string): Promise<ApplicationStatus[]>;
   listDuplicateIndex(userId: string): Promise<DuplicateIndexEntry[]>;
 
-  createApplication(ctx: MutationContext, command: CreateApplicationCommand): Promise<MutationResult>;
-  updateApplicationStatus(ctx: MutationContext, command: UpdateApplicationStatusCommand): Promise<MutationResult>;
-  updateApplicationDetails(ctx: MutationContext, command: UpdateApplicationDetailsCommand): Promise<MutationResult>;
-  addApplicationNote(ctx: MutationContext, command: AddApplicationNoteCommand): Promise<MutationResult>;
-  updateApplicationNote(ctx: MutationContext, command: UpdateApplicationNoteCommand): Promise<MutationResult>;
+  createApplication(
+    ctx: MutationContext,
+    command: CreateApplicationCommand,
+  ): Promise<MutationResult>;
+  updateApplicationStatus(
+    ctx: MutationContext,
+    command: UpdateApplicationStatusCommand,
+  ): Promise<MutationResult>;
+  updateApplicationDetails(
+    ctx: MutationContext,
+    command: UpdateApplicationDetailsCommand,
+  ): Promise<MutationResult>;
+  addApplicationNote(
+    ctx: MutationContext,
+    command: AddApplicationNoteCommand,
+  ): Promise<MutationResult>;
+  updateApplicationNote(
+    ctx: MutationContext,
+    command: UpdateApplicationNoteCommand,
+  ): Promise<MutationResult>;
   importApplications(ctx: MutationContext, command: CommitImportCommand): Promise<MutationResult>;
 
   getCandidateProfile(userId: string): Promise<CandidateProfile | null>;

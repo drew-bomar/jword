@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createClock, fixedClock, isIsoDate, resolveTimeZone, todayInTimeZone } from "../src/domain/dates";
+import {
+  createClock,
+  fixedClock,
+  isIsoDate,
+  resolveTimeZone,
+  todayInTimeZone,
+} from "../src/domain/dates";
 import { cleanText, normalizeName } from "../src/domain/normalize";
 import { resolveUniqueMatch } from "../src/domain/match";
 import { safeMutationResult } from "../src/services/index";
@@ -78,13 +84,21 @@ const summary = (id: string): ApplicationSummary => ({
 
 describe("resolveUniqueMatch", () => {
   it("none / unique / ambiguous", () => {
-    expect(resolveUniqueMatch({ items: [], hasMore: false, nextCursor: null })).toEqual({ kind: "none" });
-    expect(resolveUniqueMatch({ items: [summary("a")], hasMore: false, nextCursor: null })).toMatchObject({ kind: "unique" });
-    expect(resolveUniqueMatch({ items: [summary("a"), summary("b")], hasMore: false, nextCursor: null })).toMatchObject({ kind: "ambiguous", truncated: false });
+    expect(resolveUniqueMatch({ items: [], hasMore: false, nextCursor: null })).toEqual({
+      kind: "none",
+    });
+    expect(
+      resolveUniqueMatch({ items: [summary("a")], hasMore: false, nextCursor: null }),
+    ).toMatchObject({ kind: "unique" });
+    expect(
+      resolveUniqueMatch({ items: [summary("a"), summary("b")], hasMore: false, nextCursor: null }),
+    ).toMatchObject({ kind: "ambiguous", truncated: false });
   });
 
   it("a single item on a truncated page is not unique", () => {
-    expect(resolveUniqueMatch({ items: [summary("a")], hasMore: true, nextCursor: "x" })).toMatchObject({ kind: "ambiguous", truncated: true });
+    expect(
+      resolveUniqueMatch({ items: [summary("a")], hasMore: true, nextCursor: "x" }),
+    ).toMatchObject({ kind: "ambiguous", truncated: true });
   });
 });
 

@@ -15,14 +15,17 @@ export function NavLinks() {
   return (
     <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
       {LINKS.map((link) => {
-        const active = link.href === "/" ? pathname === "/" || pathname.startsWith("/applications") : pathname.startsWith(link.href);
+        const active =
+          link.href === "/"
+            ? pathname === "/" || pathname.startsWith("/applications")
+            : pathname.startsWith(link.href);
         return (
           <Link
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "rounded-md px-2 py-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+              "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-md px-2 py-1 transition-colors focus-visible:ring-3 focus-visible:outline-none",
               active && "bg-muted text-foreground",
             )}
           >

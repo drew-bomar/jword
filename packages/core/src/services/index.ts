@@ -70,7 +70,15 @@ export interface PreviewImportInput {
   mapping: ImportMapping;
 }
 
-const SAFE_SCALAR_FIELDS = new Set(["status", "priority", "appliedAt", "dateFound", "datePosted", "workArrangement", "noteDate"]);
+const SAFE_SCALAR_FIELDS = new Set([
+  "status",
+  "priority",
+  "appliedAt",
+  "dateFound",
+  "datePosted",
+  "workArrangement",
+  "noteDate",
+]);
 
 export function toSummary(item: ApplicationOverview): ApplicationSummary {
   return {
@@ -87,7 +95,10 @@ export function toSummary(item: ApplicationOverview): ApplicationSummary {
 }
 
 export function countStatuses(statuses: ApplicationStatus[]): StatusCounts {
-  const byStatus = Object.fromEntries(APPLICATION_STATUSES.map((s) => [s, 0])) as Record<ApplicationStatus, number>;
+  const byStatus = Object.fromEntries(APPLICATION_STATUSES.map((s) => [s, 0])) as Record<
+    ApplicationStatus,
+    number
+  >;
   for (const status of statuses) byStatus[status] += 1;
   const active = ACTIVE_STATUSES.reduce((sum, status) => sum + byStatus[status], 0);
   return { byStatus, total: statuses.length, active };
@@ -113,7 +124,9 @@ export function createTrackerServices(deps: ServiceDependencies) {
     actor: ActorContext,
     meta: { requestId?: string },
     fn: () => Promise<T>,
-    extract?: (value: T) => Partial<{ applicationId: string; noteId: string; noop: boolean; replayed: boolean }>,
+    extract?: (
+      value: T,
+    ) => Partial<{ applicationId: string; noteId: string; noop: boolean; replayed: boolean }>,
   ): Promise<T> {
     const started = Date.now();
     try {
@@ -156,10 +169,16 @@ export function createTrackerServices(deps: ServiceDependencies) {
 
   return {
     // ----------------------------------------------------------------- reads
-    async searchApplications(input: unknown, actor: ActorContext): Promise<Page<ApplicationOverview>> {
+    async searchApplications(
+      input: unknown,
+      actor: ActorContext,
+    ): Promise<Page<ApplicationOverview>> {
       const query = parseOrThrow(searchApplicationsSchema, input ?? {});
       return run("search_applications", actor, {}, () =>
-        repository.searchApplications(actor.userId, { ...query, limit: query.limit ?? SEARCH_DEFAULT_LIMIT }),
+        repository.searchApplications(actor.userId, {
+          ...query,
+          limit: query.limit ?? SEARCH_DEFAULT_LIMIT,
+        }),
       );
     },
 
@@ -173,13 +192,18 @@ export function createTrackerServices(deps: ServiceDependencies) {
             limit: query.notesLimit ?? 20,
             cursor: query.notesCursor,
           }),
-          repository.listActivity(actor.userId, query.applicationId, { limit: query.activityLimit ?? 20 }),
+          repository.listActivity(actor.userId, query.applicationId, {
+            limit: query.activityLimit ?? 20,
+          }),
         ]);
         return { application, notes, activity };
       });
     },
 
-    async listApplicationActivity(input: unknown, actor: ActorContext): Promise<Page<ApplicationActivity>> {
+    async listApplicationActivity(
+      input: unknown,
+      actor: ActorContext,
+    ): Promise<Page<ApplicationActivity>> {
       const query = parseOrThrow(listActivitySchema, input);
       return run("list_application_activity", actor, {}, async () => {
         const application = await repository.getApplication(actor.userId, query.applicationId);
@@ -192,7 +216,9 @@ export function createTrackerServices(deps: ServiceDependencies) {
     },
 
     async getStatusCounts(actor: ActorContext): Promise<StatusCounts> {
-      return run("status_counts", actor, {}, async () => countStatuses(await repository.listStatuses(actor.userId)));
+      return run("status_counts", actor, {}, async () =>
+        countStatuses(await repository.listStatuses(actor.userId)),
+      );
     },
 
     async getPipelineSummary(input: unknown, actor: ActorContext): Promise<PipelineSummary> {
@@ -201,7 +227,9 @@ export function createTrackerServices(deps: ServiceDependencies) {
       const staleLimit = query.staleLimit ?? 10;
       return run("get_pipeline_summary", actor, {}, async () => {
         const counts = countStatuses(await repository.listStatuses(actor.userId));
-        const threshold = new Date(clock.now().getTime() - staleAfterDays * 24 * 60 * 60 * 1000).toISOString();
+        const threshold = new Date(
+          clock.now().getTime() - staleAfterDays * 24 * 60 * 60 * 1000,
+        ).toISOString();
         const stale = await repository.searchApplications(actor.userId, {
           statuses: [...ACTIVE_STATUSES],
           updatedBefore: threshold,
@@ -226,8 +254,19 @@ export function createTrackerServices(deps: ServiceDependencies) {
     },
 
     /** Read-only duplicate probe for forms; the database re-checks at commit. */
-    async findDuplicateCandidates(input: unknown, actor: ActorContext): Promise<DuplicateCandidate[]> {
-      const command = parseOrThrow(createApplicationSchema.pick({ company: true, title: true, jobUrl: true, externalJobId: true }), input);
+    async findDuplicateCandidates(
+      input: unknown,
+      actor: ActorContext,
+    ): Promise<DuplicateCandidate[]> {
+      const command = parseOrThrow(
+        createApplicationSchema.pick({
+          company: true,
+          title: true,
+          jobUrl: true,
+          externalJobId: true,
+        }),
+        input,
+      );
       return run("find_duplicates", actor, {}, async () => {
         const { findDuplicateCandidates, probeForRow } = await import("../import/validate");
         const index = await repository.listDuplicateIndex(actor.userId);
@@ -285,10 +324,15 @@ export function createTrackerServices(deps: ServiceDependencies) {
       return run("preview_import", actor, {}, async () => {
         const missing = missingRequiredMappings(input.mapping);
         if (missing.length) {
-          throw new JwordError("VALIDATION_ERROR", `Map the required columns first: ${missing.join(", ")}.`);
+          throw new JwordError(
+            "VALIDATION_ERROR",
+            `Map the required columns first: ${missing.join(", ")}.`,
+          );
         }
         const parsed = parseCsv(input.csvText);
-        const previews = parsed.rows.map((row, index) => validateImportRow(index + 1, applyMapping(row, input.mapping)));
+        const previews = parsed.rows.map((row, index) =>
+          validateImportRow(index + 1, applyMapping(row, input.mapping)),
+        );
         const existing = await repository.listDuplicateIndex(actor.userId);
         const rows = annotateDuplicates(previews, existing);
         return {
@@ -298,7 +342,8 @@ export function createTrackerServices(deps: ServiceDependencies) {
           rows,
           validCount: rows.filter((r) => r.errors.length === 0).length,
           errorCount: rows.filter((r) => r.errors.length > 0).length,
-          flaggedCount: rows.filter((r) => r.duplicates.length > 0 || r.duplicateOfRows.length > 0).length,
+          flaggedCount: rows.filter((r) => r.duplicates.length > 0 || r.duplicateOfRows.length > 0)
+            .length,
         };
       });
     },
@@ -318,12 +363,16 @@ export function createTrackerServices(deps: ServiceDependencies) {
 
     // --------------------------------------------------------------- profile
     async getCandidateProfile(actor: ActorContext): Promise<CandidateProfile | null> {
-      return run("get_candidate_profile", actor, {}, () => repository.getCandidateProfile(actor.userId));
+      return run("get_candidate_profile", actor, {}, () =>
+        repository.getCandidateProfile(actor.userId),
+      );
     },
 
     async saveCandidateProfile(input: unknown, actor: ActorContext): Promise<CandidateProfile> {
       const command = parseOrThrow(candidateProfileSchema, input);
-      return run("save_candidate_profile", actor, {}, () => repository.saveCandidateProfile(actor.userId, command));
+      return run("save_candidate_profile", actor, {}, () =>
+        repository.saveCandidateProfile(actor.userId, command),
+      );
     },
   };
 }

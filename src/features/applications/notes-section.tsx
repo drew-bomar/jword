@@ -22,7 +22,12 @@ interface NoteDraft {
 function todayLocal(): string {
   // The date picker default is a convenience; the server owns "today" for defaults.
   const now = new Date();
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }
 
 function useNoteMutation(onDone: () => void) {
@@ -40,7 +45,9 @@ function useNoteMutation(onDone: () => void) {
         return;
       }
       if (result.error.code === "CONFLICT" && result.error.reason === "STALE_VERSION") {
-        setError("This application changed since you opened it. Refresh the page, then save again. Your text is kept here.");
+        setError(
+          "This application changed since you opened it. Refresh the page, then save again. Your text is kept here.",
+        );
         return;
       }
       setError(result.error.message);
@@ -60,7 +67,12 @@ function DateLabelControl({
 }) {
   if (draft.noteDate === null) {
     return (
-      <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ ...draft, noteDate: todayLocal() })}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => onChange({ ...draft, noteDate: todayLocal() })}
+      >
         <CalendarPlusIcon data-icon="inline-start" aria-hidden />
         Add date
       </Button>
@@ -68,7 +80,7 @@ function DateLabelControl({
   }
   return (
     <div className="flex items-center gap-1.5">
-      <Label htmlFor={`${idPrefix}-date`} className="text-xs text-muted-foreground">
+      <Label htmlFor={`${idPrefix}-date`} className="text-muted-foreground text-xs">
         Date label
       </Label>
       <Input
@@ -78,7 +90,13 @@ function DateLabelControl({
         value={draft.noteDate}
         onChange={(e) => onChange({ ...draft, noteDate: e.target.value })}
       />
-      <Button type="button" variant="ghost" size="icon-xs" aria-label="Remove date label" onClick={() => onChange({ ...draft, noteDate: null })}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Remove date label"
+        onClick={() => onChange({ ...draft, noteDate: null })}
+      >
         <XIcon aria-hidden />
       </Button>
     </div>
@@ -118,7 +136,14 @@ function NoteEditor({
       <Label htmlFor={`note-${note.noteId}`} className="sr-only">
         Edit note
       </Label>
-      <Textarea id={`note-${note.noteId}`} rows={3} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} required autoFocus />
+      <Textarea
+        id={`note-${note.noteId}`}
+        rows={3}
+        value={draft.body}
+        onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+        required
+        autoFocus
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <DateLabelControl draft={draft} onChange={setDraft} idPrefix={`note-${note.noteId}`} />
         <div className="flex gap-1">
@@ -131,7 +156,7 @@ function NoteEditor({
         </div>
       </div>
       {error ? (
-        <p className="text-xs text-destructive" role="alert">
+        <p className="text-destructive text-xs" role="alert">
           {error}
         </p>
       ) : null}
@@ -176,7 +201,13 @@ export function NotesSection({
         }}
       >
         <Label htmlFor="new-note">Add a note</Label>
-        <Textarea id="new-note" rows={3} placeholder="What happened, what to remember…" value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
+        <Textarea
+          id="new-note"
+          rows={3}
+          placeholder="What happened, what to remember…"
+          value={draft.body}
+          onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+        />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <DateLabelControl draft={draft} onChange={setDraft} idPrefix="new-note" />
           <Button type="submit" size="sm" disabled={pending || draft.body.trim() === ""}>
@@ -184,34 +215,49 @@ export function NotesSection({
           </Button>
         </div>
         {error ? (
-          <p className="text-xs text-destructive" role="alert">
+          <p className="text-destructive text-xs" role="alert">
             {error}
           </p>
         ) : null}
       </form>
 
       {notes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No notes yet.</p>
+        <p className="text-muted-foreground text-sm">No notes yet.</p>
       ) : (
         <ul className="space-y-2">
           {notes.map((note) => (
             <li key={note.noteId} className="rounded-lg border p-3" data-testid="note">
               {editing === note.noteId ? (
-                <NoteEditor note={note} applicationId={applicationId} version={version} onClose={() => setEditing(null)} />
+                <NoteEditor
+                  note={note}
+                  applicationId={applicationId}
+                  version={version}
+                  onClose={() => setEditing(null)}
+                />
               ) : (
                 <div className="space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-muted-foreground text-xs">
                       {note.noteDate ? (
-                        <span className="font-medium text-foreground">{formatDate(note.noteDate)}</span>
+                        <span className="text-foreground font-medium">
+                          {formatDate(note.noteDate)}
+                        </span>
                       ) : (
                         <span>Undated</span>
                       )}
                       <span className="mx-1.5">·</span>
                       <time dateTime={note.createdAt}>added {formatDateTime(note.createdAt)}</time>
-                      {note.updatedAt !== note.createdAt ? <span> · edited {formatDateTime(note.updatedAt)}</span> : null}
+                      {note.updatedAt !== note.createdAt ? (
+                        <span> · edited {formatDateTime(note.updatedAt)}</span>
+                      ) : null}
                     </div>
-                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Edit note" onClick={() => setEditing(note.noteId)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Edit note"
+                      onClick={() => setEditing(note.noteId)}
+                    >
                       <PencilIcon aria-hidden />
                     </Button>
                   </div>
@@ -222,7 +268,9 @@ export function NotesSection({
           ))}
         </ul>
       )}
-      {hasMore ? <p className="text-xs text-muted-foreground">Showing the most recent notes.</p> : null}
+      {hasMore ? (
+        <p className="text-muted-foreground text-xs">Showing the most recent notes.</p>
+      ) : null}
     </section>
   );
 }

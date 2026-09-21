@@ -41,7 +41,9 @@ describe("parseCsv", () => {
     expect(() => parseCsv("")).toThrow(/header/);
     expect(() => parseCsv(",,\n")).toThrow(/header/);
     expect(() => parseCsv('A,B\n"open,x')).toThrow(/unterminated/);
-    const many = ["A"].concat(Array.from({ length: IMPORT_MAX_ROWS + 1 }, (_, i) => `r${i}`)).join("\n");
+    const many = ["A"]
+      .concat(Array.from({ length: IMPORT_MAX_ROWS + 1 }, (_, i) => `r${i}`))
+      .join("\n");
     expect(() => parseCsv(many)).toThrow(/limit/);
     expect(() => parseCsv("x".repeat(IMPORT_MAX_BYTES + 1))).toThrow(/too large/);
   });

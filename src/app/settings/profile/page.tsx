@@ -14,8 +14,9 @@ export default async function ProfilePage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Candidate profile</h1>
-          <p className="text-sm text-muted-foreground">
-            Basic details kept for future application autofill. Nothing here is required, and none of it is sent anywhere.
+          <p className="text-muted-foreground text-sm">
+            Basic details kept for future application autofill. Nothing here is required, and none
+            of it is sent anywhere.
           </p>
         </div>
         <ProfileForm profile={profile} />

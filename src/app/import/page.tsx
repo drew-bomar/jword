@@ -12,9 +12,9 @@ export default async function ImportPage() {
       <div className="mx-auto max-w-5xl space-y-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Import from CSV</h1>
-          <p className="text-sm text-muted-foreground">
-            Export your sheet as CSV, map its columns, review every row, then confirm. Nothing is saved until you confirm,
-            and the file itself is never stored.{" "}
+          <p className="text-muted-foreground text-sm">
+            Export your sheet as CSV, map its columns, review every row, then confirm. Nothing is
+            saved until you confirm, and the file itself is never stored.{" "}
             <a href="/jword-import-template.csv" download className="underline">
               Download the template
             </a>

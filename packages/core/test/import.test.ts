@@ -12,7 +12,18 @@ import {
 
 describe("suggestMapping", () => {
   it("maps realistic sheet headers", () => {
-    const headers = ["Company", "Role", "Status", "Priority", "Link", "Location", "Date Applied", "Date Added", "Notes", "Referred By"];
+    const headers = [
+      "Company",
+      "Role",
+      "Status",
+      "Priority",
+      "Link",
+      "Location",
+      "Date Applied",
+      "Date Added",
+      "Notes",
+      "Referred By",
+    ];
     const mapping = suggestMapping(headers);
     expect(mapping.company).toBe(0);
     expect(mapping.title).toBe(1);
@@ -85,7 +96,13 @@ describe("validateImportRow", () => {
       jobUrl: "ibm.com/jobs",
     });
     expect(preview.values).toBeNull();
-    expect(preview.errors.map((e) => e.field).sort()).toEqual(["appliedAt", "jobUrl", "priority", "status", "workArrangement"]);
+    expect(preview.errors.map((e) => e.field).sort()).toEqual([
+      "appliedAt",
+      "jobUrl",
+      "priority",
+      "status",
+      "workArrangement",
+    ]);
   });
 
   it("produces typed values and an APPLIED-without-date warning", () => {

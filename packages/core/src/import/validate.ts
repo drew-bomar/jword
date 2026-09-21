@@ -54,10 +54,16 @@ const ARRANGEMENT_ALIASES: Record<string, WorkArrangement> = {
 };
 
 function keyOf(value: string): string {
-  return value.trim().toUpperCase().replace(/[\s/-]+/g, "_");
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[\s/-]+/g, "_");
 }
 
-export function parseStatusCell(value: string | undefined): { value?: ApplicationStatus; error?: string } {
+export function parseStatusCell(value: string | undefined): {
+  value?: ApplicationStatus;
+  error?: string;
+} {
   const text = cleanText(value);
   if (text === null) return {};
   const key = keyOf(text);
@@ -68,15 +74,22 @@ export function parseStatusCell(value: string | undefined): { value?: Applicatio
   return { value: resolved };
 }
 
-export function parsePriorityCell(value: string | undefined): { value?: ApplicationPriority; error?: string } {
+export function parsePriorityCell(value: string | undefined): {
+  value?: ApplicationPriority;
+  error?: string;
+} {
   const text = cleanText(value);
   if (text === null) return {};
   const key = keyOf(text);
-  if ((APPLICATION_PRIORITIES as readonly string[]).includes(key)) return { value: key as ApplicationPriority };
+  if ((APPLICATION_PRIORITIES as readonly string[]).includes(key))
+    return { value: key as ApplicationPriority };
   return { error: `Unknown priority "${text}".` };
 }
 
-export function parseArrangementCell(value: string | undefined): { value?: WorkArrangement; error?: string } {
+export function parseArrangementCell(value: string | undefined): {
+  value?: WorkArrangement;
+  error?: string;
+} {
   const text = cleanText(value);
   if (text === null) return {};
   const key = keyOf(text);
@@ -91,7 +104,10 @@ export function parseArrangementCell(value: string | undefined): { value?: WorkA
  * Accepts ISO (YYYY-MM-DD) and US slash dates (M/D/YYYY or M/D/YY, as Google Sheets exports).
  * Anything else is an error the user must fix; nothing is guessed.
  */
-export function parseDateCell(value: string | undefined): { value?: string | null; error?: string } {
+export function parseDateCell(value: string | undefined): {
+  value?: string | null;
+  error?: string;
+} {
   const text = cleanText(value);
   if (text === null) return { value: null };
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
@@ -150,9 +166,17 @@ export function validateImportRow(rowIndex: number, raw: RawImportRow): ImportRo
     candidate.jobUrl = null;
   }
 
-  for (const field of ["externalJobId", "location", "source", "resumeVersion", "referral", "note"] as const) {
+  for (const field of [
+    "externalJobId",
+    "location",
+    "source",
+    "resumeVersion",
+    "referral",
+    "note",
+  ] as const) {
     if (raw[field] === undefined) continue;
-    const text = field === "note" ? (raw[field]?.trim() ? raw[field] : null) : cleanText(raw[field]);
+    const text =
+      field === "note" ? (raw[field]?.trim() ? raw[field] : null) : cleanText(raw[field]);
     candidate[field] = text ?? null;
   }
 
@@ -162,13 +186,22 @@ export function validateImportRow(rowIndex: number, raw: RawImportRow): ImportRo
     for (const issue of parsed.error.issues) {
       const field = (issue.path[0] as ImportField | undefined) ?? "row";
       if (!errors.some((e) => e.field === field && e.message === issue.message)) {
-        errors.push({ field: IMPORT_FIELDS.includes(field as ImportField) ? field : "row", message: issue.message });
+        errors.push({
+          field: IMPORT_FIELDS.includes(field as ImportField) ? field : "row",
+          message: issue.message,
+        });
       }
     }
   }
 
-  if (candidate.status === "APPLIED" && (candidate.appliedAt === null || candidate.appliedAt === undefined)) {
-    warnings.push({ field: "appliedAt", message: "Status is APPLIED but no applied date; it will stay blank." });
+  if (
+    candidate.status === "APPLIED" &&
+    (candidate.appliedAt === null || candidate.appliedAt === undefined)
+  ) {
+    warnings.push({
+      field: "appliedAt",
+      message: "Status is APPLIED but no applied date; it will stay blank.",
+    });
   }
 
   return {
@@ -206,7 +239,10 @@ export interface DuplicateProbe {
 
 export function matchDuplicate(probe: DuplicateProbe, entry: DuplicateIndexEntry): string[] {
   const matchedOn: string[] = [];
-  if (entry.normalizedCompany === probe.normalizedCompany && entry.normalizedTitle === probe.normalizedTitle) {
+  if (
+    entry.normalizedCompany === probe.normalizedCompany &&
+    entry.normalizedTitle === probe.normalizedTitle
+  ) {
     matchedOn.push("company_title");
   }
   if (probe.jobUrl && entry.jobUrl === probe.jobUrl) matchedOn.push("job_url");
@@ -220,7 +256,10 @@ export function matchDuplicate(probe: DuplicateProbe, entry: DuplicateIndexEntry
   return matchedOn;
 }
 
-export function findDuplicateCandidates(probe: DuplicateProbe, index: DuplicateIndexEntry[]): DuplicateCandidate[] {
+export function findDuplicateCandidates(
+  probe: DuplicateProbe,
+  index: DuplicateIndexEntry[],
+): DuplicateCandidate[] {
   const out: DuplicateCandidate[] = [];
   for (const entry of index) {
     const matchedOn = matchDuplicate(probe, entry);
@@ -238,7 +277,12 @@ export function findDuplicateCandidates(probe: DuplicateProbe, index: DuplicateI
   return out;
 }
 
-export function probeForRow(values: { company: string; title: string; jobUrl?: string | null; externalJobId?: string | null }): DuplicateProbe {
+export function probeForRow(values: {
+  company: string;
+  title: string;
+  jobUrl?: string | null;
+  externalJobId?: string | null;
+}): DuplicateProbe {
   return {
     normalizedCompany: normalizeName(values.company),
     normalizedTitle: normalizeName(values.title),
@@ -248,7 +292,10 @@ export function probeForRow(values: { company: string; title: string; jobUrl?: s
 }
 
 /** Annotate previews with duplicates against existing records and earlier rows in the upload. */
-export function annotateDuplicates(previews: ImportRowPreview[], existing: DuplicateIndexEntry[]): ImportRowPreview[] {
+export function annotateDuplicates(
+  previews: ImportRowPreview[],
+  existing: DuplicateIndexEntry[],
+): ImportRowPreview[] {
   const seen: Array<{ rowIndex: number; probe: DuplicateProbe }> = [];
   return previews.map((preview) => {
     if (!preview.values) return preview;

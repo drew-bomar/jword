@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  APPLICATION_PRIORITIES,
-  APPLICATION_STATUSES,
-  WORK_ARRANGEMENTS,
-} from "../domain/enums";
+import { APPLICATION_PRIORITIES, APPLICATION_STATUSES, WORK_ARRANGEMENTS } from "../domain/enums";
 import { isIsoDate } from "../domain/dates";
 import { JwordError } from "../domain/errors";
 
@@ -50,7 +46,10 @@ export const prioritySchema = z.enum(APPLICATION_PRIORITIES, { error: "Unknown p
 export const workArrangementSchema = z.enum(WORK_ARRANGEMENTS, {
   error: "Unknown work arrangement.",
 });
-export const versionSchema = z.number().int().positive({ error: "expectedVersion must be a positive integer." });
+export const versionSchema = z
+  .number()
+  .int()
+  .positive({ error: "expectedVersion must be a positive integer." });
 export const requestIdSchema = uuidSchema;
 
 // ---------------------------------------------------------------------------

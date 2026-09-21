@@ -9,10 +9,9 @@ import { servicesFor } from "@/server/services";
 import { runAction, type ActionResult } from "./result";
 
 const mappingSchema = z.object(
-  Object.fromEntries(IMPORT_FIELDS.map((field) => [field, z.number().int().min(0).nullable()])) as Record<
-    (typeof IMPORT_FIELDS)[number],
-    z.ZodNullable<z.ZodNumber>
-  >,
+  Object.fromEntries(
+    IMPORT_FIELDS.map((field) => [field, z.number().int().min(0).nullable()]),
+  ) as Record<(typeof IMPORT_FIELDS)[number], z.ZodNullable<z.ZodNumber>>,
 );
 
 const previewSchema = z.strictObject({

@@ -11,11 +11,15 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1">
           <h1 className="text-xl font-semibold tracking-tight">Sign in to jword</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Enter the owner email. You will receive a one-time code and a magic link.
           </p>
         </div>
-        <SignInForm initialError={linkError ? "That sign-in link is invalid or expired. Request a new one." : null} />
+        <SignInForm
+          initialError={
+            linkError ? "That sign-in link is invalid or expired. Request a new one." : null
+          }
+        />
       </div>
     </main>
   );
