@@ -37,3 +37,7 @@ next-env.d.ts
 supabase/.branches
 supabase/.temp
 supabase/.env
+
+# personal agent config with machine-specific paths
+.codex/
+.mcp.json
