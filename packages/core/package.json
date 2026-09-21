@@ -1,0 +1,29 @@
+{
+  "name": "@jword/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared jword domain types, validation schemas, services, and repositories.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "default": "./src/browser.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  }
+}
