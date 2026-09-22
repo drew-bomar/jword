@@ -1,6 +1,6 @@
 # 012 - One Notes section with optional editable dates
 
-Status: Accepted by the owner on 2026-09-21.
+Status: Accepted by the owner on 2026-09-21. The optional date label was later removed by [decision 015](015-remove-note-date-labels.md); the single Notes section and editable notes remain.
 
 ## Decision
 

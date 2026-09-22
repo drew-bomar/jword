@@ -35,7 +35,7 @@ One user: Drew. The data model must still be properly user-scoped so authenticat
 - **Job:** a specific opening, such as Backend Software Engineer.
 - **Application:** Drew's tracked lifecycle for that job. A saved job receives an application record with status `SAVED` so the complete funnel can be shown in one table.
 - **Activity:** an append-only timeline item describing a meaningful event or mutation.
-- **Note:** an individual editable text entry on an application, optionally labeled with a user-chosen date.
+- **Note:** an individual editable text entry on an application, stamped with when it was added and last edited (date labels were removed in [decision 015](decisions/015-remove-note-date-labels.md)).
 
 Candidate-profile storage and settings are deferred to a future version that needs them for job recommendations or application autofill. They are not part of the v1 information model.
 
@@ -121,11 +121,11 @@ Shows:
 - job and company information
 - current application state
 - editable dates, priority, source, and URL
-- one Notes section containing individual editable notes; each has an optional Add date control supporting today or another calendar date
+- one Notes section containing individual editable notes with their real added/edited timestamps
 - chronological activity timeline
 - add/edit note actions in the Notes section; activity history is generated automatically
 
-Notes default to undated. The user can edit a note's text, add/change its date, or remove its date after saving. A date label is distinct from the automatic time at which the note was saved. There is no separate summary-notes field or timeline-note entry flow. Note edits retain activity history, and stale saves preserve the draft as with other application edits. See [decision 012](decisions/012-single-notes-section.md).
+The user can edit a note's text after saving; each note shows when it was added and last edited. There is no separate summary-notes field, timeline-note entry flow, or date label. Note edits retain activity history, and stale saves preserve the draft as with other application edits. See [decision 012](decisions/012-single-notes-section.md).
 
 ### 5. Import
 

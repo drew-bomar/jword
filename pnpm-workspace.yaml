@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+
+# pnpm 12 blocks dependency build scripts unless they are explicitly allowed.
+# These are the only packages in the tree that need a postinstall step.
+allowBuilds:
+  "@tailwindcss/oxide": true
+  esbuild: true
+  sharp: true
+  supabase: true
+  unrs-resolver: true

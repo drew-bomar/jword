@@ -1,5 +1,9 @@
 # jword v1 implementation plan
 
+## Status (2026-09-21)
+
+Tickets 1-9 were implemented together in a single autonomous build on the `claude/mvp` branch. The ticket list below remains the map of the work; per-ticket acceptance criteria were verified by the unit, integration, and Playwright suites plus the walkthrough in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md). Deviations are in [decision 014](decisions/014-mvp-implementation-deviations.md).
+
 ## How to use this plan
 
 Track work in the existing [jword v1](https://linear.app/jword/project/jword-v1-7841cd83b06b) Linear project using the issues linked below. Use only lightweight labels such as `foundation`, `database`, `frontend`, `import`, `ai-tools`, and `quality`.
@@ -10,18 +14,18 @@ Every ticket should end with the learning handoff required by `AGENTS.md`. Do no
 
 Created in [jword v1](https://linear.app/jword/project/jword-v1-7841cd83b06b) on 2026-09-21. The statuses below are a creation snapshot; Linear is the source of truth for current progress. Each ticket depends on the preceding ticket.
 
-| Plan ticket | Linear issue | Initial status |
-| --- | --- | --- |
-| Ticket 0 | [JWO-5: Pre-implementation architecture review](https://linear.app/jword/issue/JWO-5/ticket-0-pre-implementation-architecture-review) | Done |
-| Ticket 1 | [JWO-6: Scaffold the application and quality gates](https://linear.app/jword/issue/JWO-6/ticket-1-scaffold-the-application-and-quality-gates) | Todo |
-| Ticket 2 | [JWO-7: Supabase schema, migrations, auth, and RLS](https://linear.app/jword/issue/JWO-7/ticket-2-supabase-schema-migrations-auth-and-rls) | Backlog |
-| Ticket 3 | [JWO-8: Shared domain, repository, and service layer](https://linear.app/jword/issue/JWO-8/ticket-3-shared-domain-repository-and-service-layer) | Backlog |
-| Ticket 4 | [JWO-9: Applications table and create/edit flows](https://linear.app/jword/issue/JWO-9/ticket-4-applications-table-and-createedit-flows) | Backlog |
-| Ticket 5 | [JWO-10: Application detail and activity timeline](https://linear.app/jword/issue/JWO-10/ticket-5-application-detail-and-activity-timeline) | Backlog |
-| Ticket 6 | [JWO-11: CSV import preview and commit](https://linear.app/jword/issue/JWO-11/ticket-6-csv-import-preview-and-commit) | Backlog |
-| Ticket 7 | [JWO-12: MCP server foundation and read tools](https://linear.app/jword/issue/JWO-12/ticket-7-mcp-server-foundation-and-read-tools) | Backlog |
-| Ticket 8 | [JWO-13: MCP mutation tools and ambiguity evaluations](https://linear.app/jword/issue/JWO-13/ticket-8-mcp-mutation-tools-and-ambiguity-evaluations) | Backlog |
-| Ticket 9 | [JWO-14: Release hardening and handoff](https://linear.app/jword/issue/JWO-14/ticket-9-release-hardening-and-handoff) | Backlog |
+| Plan ticket | Linear issue                                                                                                                                        | Initial status |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Ticket 0    | [JWO-5: Pre-implementation architecture review](https://linear.app/jword/issue/JWO-5/ticket-0-pre-implementation-architecture-review)               | Done           |
+| Ticket 1    | [JWO-6: Scaffold the application and quality gates](https://linear.app/jword/issue/JWO-6/ticket-1-scaffold-the-application-and-quality-gates)       | Todo           |
+| Ticket 2    | [JWO-7: Supabase schema, migrations, auth, and RLS](https://linear.app/jword/issue/JWO-7/ticket-2-supabase-schema-migrations-auth-and-rls)          | Backlog        |
+| Ticket 3    | [JWO-8: Shared domain, repository, and service layer](https://linear.app/jword/issue/JWO-8/ticket-3-shared-domain-repository-and-service-layer)     | Backlog        |
+| Ticket 4    | [JWO-9: Applications table and create/edit flows](https://linear.app/jword/issue/JWO-9/ticket-4-applications-table-and-createedit-flows)            | Backlog        |
+| Ticket 5    | [JWO-10: Application detail and activity timeline](https://linear.app/jword/issue/JWO-10/ticket-5-application-detail-and-activity-timeline)         | Backlog        |
+| Ticket 6    | [JWO-11: CSV import preview and commit](https://linear.app/jword/issue/JWO-11/ticket-6-csv-import-preview-and-commit)                               | Backlog        |
+| Ticket 7    | [JWO-12: MCP server foundation and read tools](https://linear.app/jword/issue/JWO-12/ticket-7-mcp-server-foundation-and-read-tools)                 | Backlog        |
+| Ticket 8    | [JWO-13: MCP mutation tools and ambiguity evaluations](https://linear.app/jword/issue/JWO-13/ticket-8-mcp-mutation-tools-and-ambiguity-evaluations) | Backlog        |
+| Ticket 9    | [JWO-14: Release hardening and handoff](https://linear.app/jword/issue/JWO-14/ticket-9-release-hardening-and-handoff)                               | Backlog        |
 
 ## Ticket 0 - Pre-implementation architecture review
 
@@ -240,7 +244,7 @@ Provide complete record editing and an understandable history.
 - detail page/drawer based on approved UX
 - editable job/application fields
 - timeline with actor, event, and time
-- one Notes section with add/edit text and optional Add date controls, per decision 012
+- one Notes section with add/edit text, per decision 012 (date labels later removed in decision 015)
 - automatic NOTE_ADDED/NOTE_UPDATED history, without a separate summary or timeline-note entry flow
 
 **Out of scope**
@@ -253,7 +257,7 @@ Provide complete record editing and an understandable history.
 
 - direct navigation to a record works
 - every meaningful mutation shows in the timeline
-- undated and dated notes can be created; text and date can be edited, and date labels removed
+- notes can be created and their text edited
 - note edits update the existing note and preserve activity history, application version checks, and retry protection
 - a note's chosen date never changes its actual creation timestamp
 - missing/forbidden records render safe states
