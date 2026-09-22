@@ -210,7 +210,7 @@ Input:
   noteId: string;
   expectedVersion: number;
   requestId: string;
-  note: string; // nonblank replacement text
+  note: string; // nonblank replacement text, up to 10,000 characters (including imported notes)
 }
 ```
 
@@ -292,6 +292,8 @@ If search returns more than one plausible application:
 On `CONFLICT` with reason `STALE_VERSION`, re-read the application and reassess the requested change. Do not simply replace the version and blindly resubmit an outdated command. If the newer state makes the user's intent unclear, explain the conflict and ask for clarification before another mutation.
 
 ### Retry after an unconfirmed result
+
+`OUTCOME_UNKNOWN` explicitly reports an uncertain outcome; it does not mean the write rolled back.
 
 Reuse the original `requestId` and exact command after a lost response. The service returns the earlier committed result if it exists, without adding records, notes, activities, or version increments. Never generate a fresh ID merely because a response was lost. On `REQUEST_ID_REUSED`, stop and resolve the input mismatch. If a command changes after a stale-version review, treat it as a new operation with a new request ID.
 

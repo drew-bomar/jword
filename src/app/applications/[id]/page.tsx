@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import { JwordError, WORK_ARRANGEMENT_LABELS, isIsoDate } from "@jword/core/browser";
+import { PageNavigation } from "@/components/page-navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -19,8 +20,15 @@ export const metadata: Metadata = { title: "Application" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function ApplicationDetailPage({ params }: PageProps<"/applications/[id]">) {
+export default async function ApplicationDetailPage({
+  params,
+  searchParams,
+}: PageProps<"/applications/[id]">) {
   const { id } = await params;
+  const query = await searchParams;
+  const notesCursor = typeof query.notesCursor === "string" ? query.notesCursor : undefined;
+  const activityCursor =
+    typeof query.activityCursor === "string" ? query.activityCursor : undefined;
   if (!UUID.test(id)) notFound();
   const session = await requirePageSession();
   const services = servicesFor(session);
@@ -28,7 +36,7 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
   let view;
   try {
     view = await services.getApplication(
-      { applicationId: id, notesLimit: 50, activityLimit: 50 },
+      { applicationId: id, notesLimit: 50, activityLimit: 50, notesCursor, activityCursor },
       session.actor,
     );
   } catch (error) {
@@ -116,15 +124,33 @@ export default async function ApplicationDetailPage({ params }: PageProps<"/appl
         </section>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <NotesSection
-            applicationId={application.applicationId}
-            version={application.version}
-            notes={notes.items}
-            hasMore={notes.hasMore}
-          />
+          <div className="space-y-3">
+            <NotesSection
+              applicationId={application.applicationId}
+              version={application.version}
+              notes={notes.items}
+              hasMore={notes.hasMore}
+            />
+            <PageNavigation
+              pathname={`/applications/${id}`}
+              params={query}
+              cursorKey="notesCursor"
+              current={notesCursor}
+              next={notes.nextCursor}
+              label="Notes"
+            />
+          </div>
           <div className="space-y-3">
             <Separator className="lg:hidden" />
             <Timeline items={activity.items} hasMore={activity.hasMore} />
+            <PageNavigation
+              pathname={`/applications/${id}`}
+              params={query}
+              cursorKey="activityCursor"
+              current={activityCursor}
+              next={activity.nextCursor}
+              label="Activity"
+            />
           </div>
         </div>
       </div>

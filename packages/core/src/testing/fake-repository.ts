@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { creationDates, statusAppliedDate } from "../domain/date-policy";
 import type { ActivityType, ApplicationStatus } from "../domain/enums";
 import { JwordError, type DuplicateCandidate } from "../domain/errors";
 import { cleanText, normalizeName } from "../domain/normalize";
@@ -349,7 +350,8 @@ export class FakeTrackerRepository implements TrackerRepository {
     metadata: Record<string, unknown>,
     occurredAt?: string,
   ): ActivityRecord {
-    if (this.failBeforeActivity) throw new Error("injected activity failure");
+    if (this.failBeforeActivity)
+      throw new JwordError("INTERNAL_ERROR", "Injected activity failure; transaction rolled back.");
     const ts = this.now();
     const record: ActivityRecord = {
       activityId: randomUUID(),
@@ -442,14 +444,7 @@ export class FakeTrackerRepository implements TrackerRepository {
       }
     }
     const status = command.status ?? "SAVED";
-    const dateFound =
-      "dateFound" in command && command.dateFound !== undefined ? command.dateFound : ctx.today;
-    const appliedAt =
-      "appliedAt" in command && command.appliedAt !== undefined
-        ? command.appliedAt
-        : status === "APPLIED"
-          ? ctx.today
-          : null;
+    const { dateFound, appliedAt } = creationDates(command, ctx.today);
     const ts = this.now();
     const job: JobRecord = {
       id: randomUUID(),
@@ -560,10 +555,7 @@ export class FakeTrackerRepository implements TrackerRepository {
         command.expectedVersion,
       );
       const statusChanged = command.status !== app.status;
-      let newApplied = app.appliedAt;
-      if (command.appliedAt !== undefined) newApplied = command.appliedAt;
-      else if (statusChanged && command.status === "APPLIED" && app.appliedAt === null)
-        newApplied = ctx.today;
+      const newApplied = statusAppliedDate(command, app, ctx.today);
       const appliedChanged = newApplied !== app.appliedAt;
       if (!statusChanged && !appliedChanged) {
         return this.finishRequest(ctx, command.requestId, op, fp, {

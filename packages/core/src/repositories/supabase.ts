@@ -259,32 +259,46 @@ export class SupabaseTrackerRepository implements TrackerRepository {
   }
 
   async listStatuses(userId: string): Promise<ApplicationStatus[]> {
-    const { data, error } = await this.client
-      .from("applications")
-      .select("status")
-      .eq("user_id", userId);
-    if (error) throw mapDatabaseError(error, "count statuses");
-    return (data ?? []).map((row) => row.status);
+    const statuses: ApplicationStatus[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await this.client
+        .from("applications")
+        .select("status")
+        .eq("user_id", userId)
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) throw mapDatabaseError(error, "count statuses");
+      statuses.push(...(data ?? []).map((row) => row.status));
+      if (!data || data.length < 500) return statuses;
+    }
   }
 
   async listDuplicateIndex(userId: string): Promise<DuplicateIndexEntry[]> {
-    const { data, error } = await this.client
-      .from("application_overview")
-      .select(
-        "application_id, company_name, company_normalized_name, title, normalized_title, job_url, external_job_id, status",
-      )
-      .eq("user_id", userId);
-    if (error) throw mapDatabaseError(error, "duplicate index");
-    return (data ?? []).map((row) => ({
-      applicationId: row.application_id!,
-      company: row.company_name!,
-      normalizedCompany: row.company_normalized_name!,
-      title: row.title!,
-      normalizedTitle: row.normalized_title!,
-      jobUrl: row.job_url,
-      externalJobId: row.external_job_id,
-      status: row.status!,
-    }));
+    const entries: DuplicateIndexEntry[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await this.client
+        .from("application_overview")
+        .select(
+          "application_id, company_name, company_normalized_name, title, normalized_title, job_url, external_job_id, status",
+        )
+        .eq("user_id", userId)
+        .order("application_id")
+        .range(offset, offset + 499);
+      if (error) throw mapDatabaseError(error, "duplicate index");
+      entries.push(
+        ...(data ?? []).map((row) => ({
+          applicationId: row.application_id!,
+          company: row.company_name!,
+          normalizedCompany: row.company_normalized_name!,
+          title: row.title!,
+          normalizedTitle: row.normalized_title!,
+          jobUrl: row.job_url,
+          externalJobId: row.external_job_id,
+          status: row.status!,
+        })),
+      );
+      if (!data || data.length < 500) return entries;
+    }
   }
 
   private async mutate(
@@ -305,7 +319,7 @@ export class SupabaseTrackerRepository implements TrackerRepository {
       p_command: stripUndefined(command) as Json,
       ...(ctx.today ? { p_today: ctx.today } : {}),
     });
-    if (error) throw mapDatabaseError(error, fn);
+    if (error) throw mapDatabaseError(error, fn, true);
     return asMutationResult(data, fn);
   }
 
@@ -359,7 +373,7 @@ export class SupabaseTrackerRepository implements TrackerRepository {
       p_request_id: command.requestId,
       p_command: { rows: command.rows.map((row) => stripUndefined(row)) } as Json,
     });
-    if (error) throw mapDatabaseError(error, "import_applications");
+    if (error) throw mapDatabaseError(error, "import_applications", true);
     return asMutationResult(data, "import_applications");
   }
 
@@ -381,7 +395,7 @@ export class SupabaseTrackerRepository implements TrackerRepository {
       p_owner_id: userId,
       p_command: stripUndefined(command) as Json,
     });
-    if (error) throw mapDatabaseError(error, "save_candidate_profile");
+    if (error) throw mapDatabaseError(error, "save_candidate_profile", true);
     const profile = await this.getCandidateProfile(userId);
     if (!profile)
       throw new JwordError("INTERNAL_ERROR", "Profile was saved but could not be read back.");

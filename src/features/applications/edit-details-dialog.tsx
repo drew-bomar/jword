@@ -18,8 +18,14 @@ import { ApplicationForm } from "./application-form";
 export function EditDetailsDialog({ application }: { application: ApplicationDetail }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) setOpen(next);
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="outline">
           <PencilIcon data-icon="inline-start" aria-hidden />
@@ -35,7 +41,8 @@ export function EditDetailsDialog({ application }: { application: ApplicationDet
         </DialogHeader>
         {open ? (
           <ApplicationForm
-            key={application.version}
+            key={application.applicationId}
+            onBusyChange={setBusy}
             mode={{
               kind: "edit",
               application,

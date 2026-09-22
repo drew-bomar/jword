@@ -252,7 +252,7 @@ A future in-app chat or model integration can interpret requests and call the sa
 
 ## Development database
 
-Use one hosted Supabase project for MVP development and real tracker use. The web application can run locally while connecting to that project. A local Supabase stack, Docker, and a separate development database are not required. See [decision 004](decisions/004-hosted-only-development.md).
+Use the hosted Supabase project for real tracker use. Automated integration and browser tests use the local Docker stack, as subsequently approved in [decision 014](decisions/014-mvp-implementation-deviations.md). The test environment guard checks both HTTP endpoints and the direct database URL before creating temporary users.
 
 Keep database changes in checked-in migrations. Validate the initial migrations against the empty hosted project before importing real data; later changes apply incrementally. Verify permissions and atomic behavior with targeted test records or transaction rollback where appropriate, without routine database resets. Unit tests can run without a database.
 
@@ -288,7 +288,7 @@ Do not log secrets, full notes, candidate-profile content, or CSV row bodies.
 
 ## Architecture decisions before scaffolding
 
-All five choices below and the product decisions in records 006-013 are approved. See [Ticket 0 final review](TICKET_0_REVIEW.md). Scaffolding is the next ticket and has not started.
+All five choices below and the product decisions in records 006-013 are approved. See [Ticket 0 final review](TICKET_0_REVIEW.md). The MVP is implemented; the original pre-scaffolding choices below remain historical context.
 
 1. **Approved:** Next.js Server Actions for web mutations, with shared service reuse; see [decision 005](decisions/005-web-server-actions.md).
 2. **Approved:** one hosted Supabase project for MVP development and real use; no required local database or Docker setup. See [decision 004](decisions/004-hosted-only-development.md).
@@ -297,3 +297,12 @@ All five choices below and the product decisions in records 006-013 are approved
 5. **Approved:** email-authenticated web sessions and a private local MCP service-role credential, as described in [decision 001](decisions/001-web-and-mcp-access.md).
 
 These choices must preserve the contracts above.
+
+## Reliability corrections (2026-09-22)
+
+- Forms retain an immutable command and request ID while a save is unconfirmed. Retry uses that exact command, even after a server refresh. `OUTCOME_UNKNOWN` means the response was lost or cannot confirm the outcome; it never claims rollback. A confirmed rejection permits a revised command with a new ID. Unconfirmed forms lock their editable inputs; resolve the original save before navigating away.
+- Stale detail edits retain their draft and original version across `router.refresh()`. The owner reviews current values, explicitly reapplies their edits, and saves only changed fields. Note drafts and inline selections are likewise retained for explicit reapplication.
+- Web lists expose cursor links for applications, notes, and activity. Status counts and duplicate probes page through the database cap rather than silently truncating at 1000 rows.
+- `domain/date-policy.ts` defines interactive date policy used by services and the test repository. Status services read current state to evaluate defaults; this read does not replace the database’s locked version check. Caller intent remains unchanged for retry fingerprints.
+- Migration 005 places mutation implementations in the private schema and validates direct RPC inputs before delegating. SQL repeats essential write invariants because callers can bypass TypeScript. Company matching, duplicate detection, receipts, and history stay inside the transaction so concurrent saves cannot bypass them.
+- Browser tests use `.next-e2e` on port 3100 so an existing developer server can remain running.

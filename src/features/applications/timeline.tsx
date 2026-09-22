@@ -66,7 +66,7 @@ export function Timeline({ items, hasMore }: { items: ApplicationActivity[]; has
         </ol>
       )}
       {hasMore ? (
-        <p className="text-muted-foreground text-xs">Showing the most recent activity.</p>
+        <p className="text-muted-foreground text-xs">More activity is available below.</p>
       ) : null}
     </section>
   );

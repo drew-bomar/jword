@@ -63,7 +63,17 @@ export function ProfileForm({ profile }: { profile: CandidateProfile | null }) {
       for (const f of TEXT_FIELDS) payload[f.key] = values[f.key]?.trim() ? values[f.key] : null;
       payload.requiresSponsorship =
         values.requiresSponsorship === "unknown" ? null : values.requiresSponsorship === "yes";
-      const result = await saveProfileAction(payload);
+      let result;
+      try {
+        result = await saveProfileAction(payload);
+      } catch {
+        setError({
+          code: "OUTCOME_UNKNOWN",
+          message:
+            "The profile save is unconfirmed. Reload to check the saved values before trying again.",
+        });
+        return;
+      }
       if (!result.ok) {
         setError(result.error);
         return;

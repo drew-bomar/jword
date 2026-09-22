@@ -83,8 +83,8 @@ function failure(operation: string, error: unknown, requestId?: string): CallToo
   const typed = isJwordError(error)
     ? error
     : {
-        code: "INTERNAL_ERROR",
-        message: "The operation failed. Nothing was changed.",
+        code: "OUTCOME_UNKNOWN",
+        message: "The result is unconfirmed. Retry the identical command with the same requestId.",
         details: {} as Record<string, never>,
       };
   const body: ToolFailure = {
@@ -454,7 +454,7 @@ export function registerJwordTools(
         applicationId,
         noteId: uuid,
         expectedVersion,
-        note: z.string().min(1).max(5000),
+        note: z.string().min(1).max(10_000),
       }),
       annotations: MUTATING,
     },

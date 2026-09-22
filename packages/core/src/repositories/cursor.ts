@@ -15,7 +15,7 @@ export function decodeCursor(cursor: string | undefined, filterKey: string): num
   if (!cursor) return 0;
   try {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as CursorPayload;
-    if (typeof parsed.o !== "number" || parsed.o < 0 || parsed.h !== filterKey) {
+    if (!Number.isSafeInteger(parsed.o) || parsed.o < 0 || parsed.h !== filterKey) {
       throw new Error("mismatch");
     }
     return parsed.o;

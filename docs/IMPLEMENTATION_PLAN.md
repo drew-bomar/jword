@@ -2,7 +2,7 @@
 
 ## Status (2026-09-21)
 
-Tickets 1-9 were implemented together in a single autonomous build on the `claude/mvp` branch. The ticket list below remains the map of the work; per-ticket acceptance criteria were verified by the unit, integration, and Playwright suites plus the walkthrough in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md). Deviations are in [decision 014](decisions/014-mvp-implementation-deviations.md).
+Tickets 1-9 were implemented together in a single autonomous build on the `claude/mvp` branch. The ticket list below remains the map of the work; verification was recorded in the unit, integration, and Playwright suites plus the walkthrough in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md). Deviations are in [decision 014](decisions/014-mvp-implementation-deviations.md).
 
 ## How to use this plan
 
@@ -59,7 +59,7 @@ The owner approved one Notes section containing individual notes with optional d
 
 The owner approved conservative company-name matching: ignore capitalization and extra whitespace, preserve punctuation/legal suffixes, and never infer aliases or combine applications. See [decision 013](decisions/013-conservative-company-matching.md).
 
-Ticket 0 review is complete: all five deliberate architecture choices and the discussed product decisions are approved. The final consistency pass and remaining implementation checks are recorded in [the final review](TICKET_0_REVIEW.md). No further pre-scaffolding product decisions are pending. At the owner's request, the `jword v1` Linear project and all ten issues were created with acceptance criteria, labels, and sequential dependencies. Ticket 0 is Done, Ticket 1 is Todo, and Tickets 2–9 are in Backlog. Ticket 1 has not started; the next owner instruction should authorize scaffolding.
+Ticket 0 review is complete: all five deliberate architecture choices and the discussed product decisions are approved. The final consistency pass and remaining implementation checks are recorded in [the final review](TICKET_0_REVIEW.md). No further pre-scaffolding product decisions are pending. At the owner's request, the `jword v1` Linear project and all ten issues were created with acceptance criteria, labels, and sequential dependencies. Ticket 0 is Done, Ticket 1 is Todo, and Tickets 2–9 are in Backlog. That was the historical planning state; implementation subsequently proceeded under the one-shot authorization noted above.
 
 **Goal**
 
@@ -259,7 +259,7 @@ Provide complete record editing and an understandable history.
 - every meaningful mutation shows in the timeline
 - notes can be created and their text edited
 - note edits update the existing note and preserve activity history, application version checks, and retry protection
-- a note's chosen date never changes its actual creation timestamp
+- note edits retain their actual creation timestamp (date labels were removed in decision 015)
 - missing/forbidden records render safe states
 
 **Learning checkpoint**

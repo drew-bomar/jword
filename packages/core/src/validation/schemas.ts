@@ -49,7 +49,8 @@ export const workArrangementSchema = z.enum(WORK_ARRANGEMENTS, {
 export const versionSchema = z
   .number()
   .int()
-  .positive({ error: "expectedVersion must be a positive integer." });
+  .positive({ error: "expectedVersion must be a positive integer." })
+  .max(2_147_483_647);
 export const requestIdSchema = uuidSchema;
 
 // ---------------------------------------------------------------------------
@@ -151,7 +152,7 @@ export const updateApplicationNoteSchema = z.strictObject({
   applicationId: uuidSchema,
   noteId: uuidSchema,
   expectedVersion: versionSchema,
-  note: requiredText(5000, "Note"),
+  note: requiredText(10_000, "Note"),
 });
 export type UpdateApplicationNoteCommand = z.infer<typeof updateApplicationNoteSchema>;
 
@@ -177,6 +178,7 @@ export const getApplicationSchema = z.strictObject({
   applicationId: uuidSchema,
   notesLimit: z.number().int().min(1).max(50).optional(),
   notesCursor: z.string().max(200).optional(),
+  activityCursor: z.string().max(200).optional(),
   activityLimit: z.number().int().min(1).max(50).optional(),
 });
 export type GetApplicationInput = z.infer<typeof getApplicationSchema>;
@@ -219,7 +221,7 @@ export type CandidateProfileCommand = z.infer<typeof candidateProfileSchema>;
 // ---------------------------------------------------------------------------
 
 export const importRowSchema = z.strictObject({
-  rowIndex: z.number().int().positive(),
+  rowIndex: z.number().int().positive().max(2_147_483_647),
   company: requiredText(200, "Company"),
   title: requiredText(200, "Job title"),
   status: statusSchema.optional(),

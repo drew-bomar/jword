@@ -7,6 +7,7 @@ export const ERROR_CODES = [
   "AMBIGUOUS_MATCH",
   "IMPORT_ROW_ERROR",
   "INTERNAL_ERROR",
+  "OUTCOME_UNKNOWN",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -59,5 +60,8 @@ export function isJwordError(error: unknown): error is JwordError {
 
 export function toJwordError(error: unknown): JwordError {
   if (isJwordError(error)) return error;
-  return new JwordError("INTERNAL_ERROR", "Something went wrong. The change was not saved.");
+  return new JwordError(
+    "INTERNAL_ERROR",
+    "The operation could not be confirmed. Please try again.",
+  );
 }

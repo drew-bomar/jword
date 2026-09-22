@@ -41,3 +41,5 @@ supabase/.env
 # personal agent config with machine-specific paths
 .codex/
 .mcp.json
+
+.next-e2e/

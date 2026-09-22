@@ -1,5 +1,6 @@
 import type { ActorContext } from "../domain/actor";
 import { ACTIVE_STATUSES, APPLICATION_STATUSES, type ApplicationStatus } from "../domain/enums";
+import { creationDates, statusAppliedDate } from "../domain/date-policy";
 import type { Clock } from "../domain/dates";
 import { JwordError, toJwordError, type DuplicateCandidate } from "../domain/errors";
 import type {
@@ -193,6 +194,7 @@ export function createTrackerServices(deps: ServiceDependencies) {
           }),
           repository.listActivity(actor.userId, query.applicationId, {
             limit: query.activityLimit ?? 20,
+            cursor: query.activityCursor,
           }),
         ]);
         return { application, notes, activity };
@@ -247,7 +249,19 @@ export function createTrackerServices(deps: ServiceDependencies) {
         "create_application",
         actor,
         { requestId: command.requestId },
-        () => repository.createApplication(interactiveContext(actor), command),
+        () => {
+          const today = clock.today();
+          const dates = creationDates(command, today);
+          // Keep caller intent untouched for the retry fingerprint. SQL repeats the policy
+          // at the write boundary; it receives a default day only when policy needs one.
+          const needsDefault =
+            (command.dateFound === undefined && dates.dateFound !== null) ||
+            (command.appliedAt === undefined && dates.appliedAt !== null);
+          return repository.createApplication(
+            { actor, today: needsDefault ? today : null },
+            command,
+          );
+        },
         mutationMeta,
       );
     },
@@ -279,7 +293,19 @@ export function createTrackerServices(deps: ServiceDependencies) {
         "update_application_status",
         actor,
         { requestId: command.requestId },
-        () => repository.updateApplicationStatus(interactiveContext(actor), command),
+        async () => {
+          const current = await repository.getApplication(actor.userId, command.applicationId);
+          if (!current) throw new JwordError("NOT_FOUND", "Application not found.");
+          const today = clock.today();
+          const resolved = statusAppliedDate(command, current, today);
+          const needsDefault = command.appliedAt === undefined && resolved !== current.appliedAt;
+          // The transaction still compares expectedVersion against its locked row, and
+          // checks a committed receipt first. This read never authorizes a stale save.
+          return repository.updateApplicationStatus(
+            { actor, today: needsDefault ? today : null },
+            command,
+          );
+        },
         mutationMeta,
       );
     },

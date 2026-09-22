@@ -47,3 +47,10 @@ Follow `docs/MCP_SETUP.md` to register the server, then in the agent:
 4. "Add a note to Datadog: sent thank-you email." → `add_application_note` → note visible in the web
    Notes section.
 5. Say "Move Datadog to final round" again → the agent reports a no-op (status unchanged).
+
+## Reliability regression checks
+
+- Open Edit details in two tabs. Save a role change in one and a location change in the other. On conflict, refresh: the location draft must remain. Review and reapply it; both changes must survive.
+- Interrupt a save response after commit. Retry the original save; there must be only one application/note/import and one corresponding activity. Inputs stay locked until the result is confirmed.
+- Browse beyond 200 applications and 50 notes/activity entries using More/First links. Changing a table filter returns to its first page.
+- Direct RPC calls with an unknown field, non-HTTP URL, invalid date, oversized value, or wrong JSON type must fail without any rows or receipts being added. Automated checks cover this locally.

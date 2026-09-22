@@ -99,7 +99,7 @@ Revisit these only when the trigger occurs:
 | Decision                               | Trigger                                                                                                            |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Embedded chat/provider abstraction     | The terminal/Codex workflow is proven and an in-app chat is still valuable                                         |
-| Candidate profile                      | An approved job-recommendation or application-autofill feature needs reusable candidate information                |
+| Candidate profile expansion            | An approved recommendation/autofill feature requires more than the basic profile added in decision 014             |
 | Job recommendations                    | The tracker is stable and the owner wants help finding suitable opportunities; define profile requirements then    |
 | Application autofill/browser extension | Repeatedly entering application information becomes a priority; design the candidate profile alongside the feature |
 | Interview workspace                    | Interview volume makes separate preparation state useful                                                           |

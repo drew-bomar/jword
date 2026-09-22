@@ -9,6 +9,7 @@ import {
   type SearchSort,
   type SortDirection,
 } from "@jword/core/browser";
+import { PageNavigation } from "@/components/page-navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { ApplicationsTable } from "@/features/applications/applications-table";
@@ -39,7 +40,9 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Fi
 export default async function ApplicationsPage({ searchParams }: PageProps<"/">) {
   const session = await requirePageSession();
   const services = servicesFor(session);
-  const filters = parseFilters(await searchParams);
+  const params = await searchParams;
+  const filters = parseFilters(params);
+  const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
 
   const query: SearchQuery = {
     text: filters.q || undefined,
@@ -48,6 +51,7 @@ export default async function ApplicationsPage({ searchParams }: PageProps<"/">)
     sort: filters.sort,
     direction: filters.dir || undefined,
     limit: WEB_LIST_MAX_LIMIT,
+    cursor,
   };
 
   const [page, counts] = await Promise.all([
@@ -82,6 +86,14 @@ export default async function ApplicationsPage({ searchParams }: PageProps<"/">)
           hasMore={page.hasMore}
           totalTracked={counts.total}
           hasFilters={hasFilters}
+        />
+        <PageNavigation
+          pathname="/"
+          params={params}
+          cursorKey="cursor"
+          current={cursor}
+          next={page.nextCursor}
+          label="Applications"
         />
       </div>
     </AppShell>

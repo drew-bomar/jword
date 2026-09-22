@@ -58,6 +58,7 @@ export function FiltersBar({ filters }: { filters: Filters }) {
 
   function update(patch: Partial<Filters>) {
     const next = new URLSearchParams(searchParams.toString());
+    next.delete("cursor");
     const merged = { ...filters, q, ...patch };
     const set = (key: string, value: string) => (value ? next.set(key, value) : next.delete(key));
     set("q", merged.q.trim());

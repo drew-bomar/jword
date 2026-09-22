@@ -37,7 +37,7 @@ One user: Drew. The data model must still be properly user-scoped so authenticat
 - **Activity:** an append-only timeline item describing a meaningful event or mutation.
 - **Note:** an individual editable text entry on an application, stamped with when it was added and last edited (date labels were removed in [decision 015](decisions/015-remove-note-date-labels.md)).
 
-Candidate-profile storage and settings are deferred to a future version that needs them for job recommendations or application autofill. They are not part of the v1 information model.
+A minimal candidate profile and settings form were added at the owner’s request in decision 014. Recommendations and autofill remain deferred.
 
 ## Status workflow
 
@@ -143,7 +143,7 @@ Approved import failure policy: all-or-nothing for the selected batch. Preview e
 
 Approved duplicate policy for v1: flag likely duplicates using normalized company + normalized title + job URL/external ID when available, including matches against the tracker and other rows in the upload. Let the user explicitly skip the row or import it as a separate application. Never automatically merge, overwrite, or delete existing applications. Preserving separate records is more important than preventing every duplicate. A matching URL or external ID is evidence for a warning, not a reason to forbid import. See [decision 006](decisions/006-import-duplicate-choices.md).
 
-No profile/settings screen is required in v1. Candidate-profile editing is deferred with its storage. API-key entry and AI-provider selection remain out of scope.
+The minimal profile settings screen follows decision 014. API-key entry and AI-provider selection remain out of scope.
 
 Saves and import commits retain a unique request ID while the result is unconfirmed. Retrying the same command reuses that ID and returns the prior committed result rather than repeating the change. A deliberate new operation, including a new import of identical rows, uses a new ID and follows the normal duplicate-warning rules. See [decision 009](decisions/009-mutation-retry-protection.md).
 

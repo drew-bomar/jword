@@ -33,11 +33,17 @@ export async function deleteUser(id: string): Promise<void> {
 
 /** Signs the page in through the same callback route a real magic link would hit. */
 export async function signIn(page: Page, email: string): Promise<void> {
+  // Wake the local PostgREST clock before minting a fresh token. v16.2 can reject
+  // the first fresh JWT after idle (upstream PostgREST/postgrest#5196).
+  // This readiness read does not retry or conceal a failing application request.
+  const { error: readinessError } = await admin().from("applications").select("id").limit(1);
+  if (readinessError) throw new Error(`Local database readiness: ${readinessError.code}`);
   const { data, error } = await admin().auth.admin.generateLink({ type: "magiclink", email });
   if (error) throw error;
   const tokenHash = data.properties.hashed_token;
   await page.goto(`/auth/callback?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink`);
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Applications", exact: true })).toBeVisible();
 }
 
 export function todayInChicago(): string {

@@ -15,8 +15,8 @@ export default function ErrorPage({
       <div className="w-full max-w-sm space-y-4 text-center" role="alert">
         <h1 className="text-xl font-semibold tracking-tight">Something went wrong</h1>
         <p className="text-muted-foreground text-sm">
-          The page could not be loaded. Nothing was changed. Try again, or go back to the
-          applications list.
+          The page could not be loaded. If you were saving, its result may be unconfirmed. Try
+          again, or go back to the applications list.
         </p>
         <div className="flex justify-center gap-2">
           <Button type="button" onClick={() => reset()}>

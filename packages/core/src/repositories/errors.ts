@@ -17,13 +17,18 @@ const CODE_MAP: Record<string, ErrorCode> = {
   "42501": "FORBIDDEN",
   PGRST301: "UNAUTHENTICATED",
   PGRST302: "UNAUTHENTICATED",
+  PGRST303: "UNAUTHENTICATED",
 };
 
 /**
  * Translate a database/PostgREST error into a typed JwordError.
  * Messages from the jword functions are owner-safe by construction; anything else is hidden.
  */
-export function mapDatabaseError(error: PostgrestLikeError, operation: string): JwordError {
+export function mapDatabaseError(
+  error: PostgrestLikeError,
+  operation: string,
+  mutation = false,
+): JwordError {
   const code = error.code ?? "";
   const mapped = CODE_MAP[code];
   if (mapped && code.startsWith("JW")) {
@@ -51,5 +56,25 @@ export function mapDatabaseError(error: PostgrestLikeError, operation: string): 
   if (mapped === "UNAUTHENTICATED") {
     return new JwordError("UNAUTHENTICATED", "Your session has expired. Sign in again.");
   }
-  return new JwordError("INTERNAL_ERROR", `${operation} failed. The change was not saved.`);
+  // Preserve only the error code for diagnostics; raw messages can contain row data.
+  console.error(
+    JSON.stringify({
+      operation,
+      databaseCode: /^[A-Z0-9]{1,12}$/.test(code) ? code : "TRANSPORT_ERROR",
+    }),
+  );
+  if (!mutation)
+    return new JwordError("INTERNAL_ERROR", `${operation} could not be loaded. Try again.`);
+  // A SQL error confirms rollback. Transport/gateway failures do not prove that a
+  // mutation failed: its response may have been lost after commit.
+  if (/^[0-9A-Z]{5}$/.test(code)) {
+    return new JwordError(
+      "INTERNAL_ERROR",
+      `${operation} failed. The database rejected the request.`,
+    );
+  }
+  return new JwordError(
+    "OUTCOME_UNKNOWN",
+    `${operation}: the result is unconfirmed. Retry the identical command with the same request ID.`,
+  );
 }

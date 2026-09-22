@@ -1,6 +1,6 @@
 # Ticket 0 - Final architecture review
 
-Reviewed: 2026-09-21. Planning review complete; implementation has not started.
+Reviewed: 2026-09-21. Historical pre-implementation review. The MVP has since been built; see HANDOFF.md and decisions 014–015 for later changes.
 
 ## Outcome
 
@@ -56,4 +56,4 @@ Implementation followed on 2026-09-21; see the status note in [IMPLEMENTATION_PL
 
 ## Next step
 
-On the owner's instruction, start [Ticket 1 (JWO-6)](https://linear.app/jword/issue/JWO-6/ticket-1-scaffold-the-application-and-quality-gates): scaffold the web/shared-core foundation and quality commands. The Linear project and issues are already created. Do not implement the database or MCP package in Ticket 1.
+At the time of this review, the next step was [Ticket 1 (JWO-6)](https://linear.app/jword/issue/JWO-6/ticket-1-scaffold-the-application-and-quality-gates): scaffold the web/shared-core foundation and quality commands. The Linear project and issues are already created. Subsequent implementation covered those layers in the owner-authorized one-shot build.

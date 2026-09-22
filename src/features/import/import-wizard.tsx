@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { commitImportAction, previewImportAction } from "@/server/actions/import";
+import { useReliableMutation } from "@/lib/mutations/use-reliable-mutation";
 import type { ActionError } from "@/server/actions/result";
 import { cn } from "@/lib/utils";
 
@@ -95,8 +96,7 @@ export function ImportWizard() {
   const [choices, setChoices] = useState<Record<number, RowChoice>>({});
   const [error, setError] = useState<ActionError | null>(null);
   const [result, setResult] = useState<MutationResult | null>(null);
-  const [unconfirmed, setUnconfirmed] = useState(false);
-  const [requestId, setRequestId] = useState<string | null>(null);
+  const { save, unconfirmed } = useReliableMutation();
   const [pending, startTransition] = useTransition();
 
   async function onFile(file: File | undefined) {
@@ -167,27 +167,18 @@ export function ImportWizard() {
   function runCommit() {
     if (!preview) return;
     setError(null);
-    // One request id per confirmation; reused if we retry after an unconfirmed outcome.
-    const id = requestId ?? crypto.randomUUID();
-    setRequestId(id);
     startTransition(async () => {
-      let res;
-      try {
-        res = await commitImportAction({
-          requestId: id,
+      const res = await save(
+        {
           rows: selectedRows.map((row) => ({
             ...row.values!,
             duplicateChoice: isFlagged(row) ? ("import_separate" as const) : undefined,
           })),
-        });
-      } catch {
-        // Lost response: the batch may or may not have committed. Keep the request id for a safe retry.
-        setUnconfirmed(true);
-        return;
-      }
+        },
+        commitImportAction,
+      );
       if (!res.ok) {
         setError(res.error);
-        setRequestId(null);
         return;
       }
       setResult(res.data);
@@ -321,7 +312,7 @@ export function ImportWizard() {
           setChoices={setChoices}
           selectedCount={selectedRows.length}
           blockedCount={blockedSelections.length}
-          pending={pending}
+          pending={pending || unconfirmed}
           onBack={() => setStep("map")}
           onCommit={runCommit}
         />
@@ -485,7 +476,7 @@ function PreviewTable({
                     <Checkbox
                       aria-label={`Include row ${row.rowIndex}`}
                       checked={choice.include}
-                      disabled={hasErrors}
+                      disabled={hasErrors || pending}
                       onCheckedChange={(v) => setChoice(row.rowIndex, { include: v === true })}
                     />
                   </TableCell>
@@ -556,6 +547,7 @@ function PreviewTable({
                     {flagged && !hasErrors ? (
                       <label className="flex items-center gap-1.5 pt-1">
                         <Checkbox
+                          disabled={pending}
                           checked={choice.importSeparate}
                           onCheckedChange={(v) =>
                             setChoice(row.rowIndex, {

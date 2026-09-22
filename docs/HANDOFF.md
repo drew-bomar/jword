@@ -1,6 +1,44 @@
 # jword MVP handoff
 
-Built 2026-09-21 on branch `claude/mvp`. This is the engineering and learning handoff for the owner.
+Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
+
+## Reliability follow-up (2026-09-22)
+
+The four review gaps are addressed: uncertain saves retry the identical command, conflict refreshes
+preserve drafts, all three web lists have pagination, and direct database calls validate their input.
+Shared date rules and documentation now reflect the approved implementation.
+
+The runtime path remains **web form / MCP tool → shared service → repository → database transaction**.
+The transaction still saves the record, activity and retry receipt together. A receipt lets a repeated
+request return its original result without applying the change twice.
+
+Files worth understanding:
+
+- `src/lib/mutations/attempt.ts`: holds the original command and request ID until the result is known.
+- `src/features/applications/application-form.tsx`: keeps drafts while showing newer saved values.
+- `packages/core/src/domain/date-policy.ts`: interactive date defaults shared with the service tests.
+- `supabase/migrations/20260921000500_validate_commands.sql`: guards direct database calls too.
+
+Design tradeoff: essential validation remains in both TypeScript and SQL, since direct database
+callers can bypass the service. SQL also retains the rules that must run with the locked record.
+Unconfirmed requests stay in browser memory; resolve them before leaving or reloading the page.
+
+Local environment caveats: the installed PostgREST v16.2 intermittently rejects a newly issued
+sign-in token after idle (`PGRST303`), consistent with [upstream issue 5196](https://github.com/PostgREST/postgrest/issues/5196).
+Browser tests perform a database readiness read before minting the token; application failures are
+still asserted without retries. The local dependency itself has not been upgraded.
+The default Turbopack build hit an OS port restriction; the supported webpack build was verified.
+
+Verification: `pnpm check` passed formatting, lint, all TypeScript checks and 110 unit tests;
+`pnpm test:integration` passed 29 tests; `pnpm test:e2e` passed 23 browser tests with three
+intentional mobile skips; `pnpm mcp:build` and `pnpm build --webpack` passed. Browser regressions
+cover lost responses after committed creates/imports, two-tab conflicts, retained note drafts,
+and application/note/activity pagination. Database checks cover direct input rejection without
+writes and counts/duplicate probes beyond 1000 rows. No hosted environment was exercised.
+
+Migration 005 was applied only to local Supabase. Hosted deployment and Linear tickets are unchanged.
+For manual acceptance, check a two-tab edit conflict, an interrupted save and retry, and the More/First
+links with enough applications, notes or activity. See [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md).
 
 ## Outcome
 

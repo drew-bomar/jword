@@ -9,5 +9,5 @@ base("signed-out visitors are redirected to sign-in", async ({ page }) => {
 base("an invalid magic link shows an error on the sign-in page", async ({ page }) => {
   await page.goto("/auth/callback?token_hash=bogus&type=magiclink");
   await expect(page).toHaveURL(/\/sign-in\?error=link$/);
-  await expect(page.getByRole("alert")).toContainText("invalid or expired");
+  await expect(page.getByRole("alert").filter({ hasText: "invalid or expired" })).toBeVisible();
 });

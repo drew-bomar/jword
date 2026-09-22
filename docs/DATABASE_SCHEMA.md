@@ -345,3 +345,9 @@ The normalized-name unique constraint serializes concurrent creation of the same
 2. **Resolved:** one Notes section with individual editable notes and optional date labels; store current notes in `application_notes` and additions/edits in activity history, per [decision 012](decisions/012-single-notes-section.md).
 3. **Resolved:** use `America/Chicago`; default date found on interactive creation and an empty applied date when entering APPLIED to today, with explicit overrides. Keep imported missing dates null, per [decision 011](decisions/011-date-defaults-and-timezone.md).
 4. **Resolved:** ignore capitalization and extra whitespace only; preserve punctuation and legal suffixes, with no automatic alias matching, per [decision 013](decisions/013-conservative-company-matching.md).
+
+## Direct-call validation (migration 005)
+
+The public RPC signatures remain unchanged. Strict wrappers validate object shape, allowed keys, required fields, JSON types, text lengths, HTTP(S) URLs, enums, UUIDs, dates, and import rows before calling the private implementation. Rejected batches create neither rows nor receipts. Shared schemas provide the same checks before normal web/MCP calls. Text-only note edits accept up to 10,000 characters, matching the import limit so an imported note remains editable.
+
+The profile exception from decision 014 remains a simple upsert without an application activity timeline or version. Tracker mutations retain their original atomic activity/version/receipt guarantees.

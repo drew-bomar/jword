@@ -185,7 +185,7 @@ export function ApplicationsTable({
 
       {hasMore ? (
         <p className="text-muted-foreground text-xs">
-          Showing the first {items.length} results. Narrow the search to see more.
+          Showing {items.length} results on this page. More applications are available below.
         </p>
       ) : null}
     </div>
