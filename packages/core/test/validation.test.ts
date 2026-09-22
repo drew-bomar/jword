@@ -238,12 +238,33 @@ describe("note schemas", () => {
         applicationId: APP,
         expectedVersion: 1,
         note: "hi",
-        noteDate: "2026-09-20",
       }).success,
     ).toBe(true);
   });
 
-  it("rejects an empty note update", () => {
+  it("rejects the removed noteDate field as an unknown key", () => {
+    expect(
+      addApplicationNoteSchema.safeParse({
+        requestId: REQ,
+        applicationId: APP,
+        expectedVersion: 1,
+        note: "hi",
+        noteDate: "2026-09-20",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateApplicationNoteSchema.safeParse({
+        requestId: REQ,
+        applicationId: APP,
+        noteId: APP,
+        expectedVersion: 1,
+        note: "hi",
+        noteDate: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires note text on a note update", () => {
     expect(
       updateApplicationNoteSchema.safeParse({
         requestId: REQ,
@@ -258,7 +279,7 @@ describe("note schemas", () => {
         applicationId: APP,
         noteId: APP,
         expectedVersion: 1,
-        noteDate: null,
+        note: "replacement",
       }).success,
     ).toBe(true);
   });

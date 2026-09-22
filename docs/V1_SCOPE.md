@@ -20,7 +20,7 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - create and edit application/job data, including selection or creation of the associated company; no separate company-management workflow
 - inline status and priority updates
 - application detail view
-- one Notes section with individual editable notes and optional date labels; additions and edits generate activity history automatically
+- one Notes section with individual editable notes (date labels removed in decision 015); additions and edits generate activity history automatically
 - activity timeline
 - basic stage counts
 

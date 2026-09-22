@@ -1,4 +1,4 @@
-import { createApplication, expect, formatDate, test } from "./helpers/auth";
+import { createApplication, expect, test } from "./helpers/auth";
 
 test("notes and edits appear in the activity timeline, newest first", async ({ page }) => {
   await createApplication(page, {
@@ -11,20 +11,18 @@ test("notes and edits appear in the activity timeline, newest first", async ({ p
   await expect(page.getByTestId("note").first()).toContainText("Initial context");
   await expect(page.getByTestId("activity").filter({ hasText: "Created" })).toHaveCount(1);
 
-  // Add a dated note.
+  // Add a note.
   await page.getByLabel("Add a note").fill("Finished the OA");
-  await page.getByRole("button", { name: "Add date" }).click();
-  await page.locator("#new-note-date").fill("2026-09-20");
   await page.getByRole("button", { name: "Add note" }).click();
   await expect(page.getByTestId("note")).toHaveCount(2);
-  const dated = page.getByTestId("note").filter({ hasText: "Finished the OA" });
-  await expect(dated).toContainText(formatDate("2026-09-20"));
+  const added = page.getByTestId("note").filter({ hasText: "Finished the OA" });
+  await expect(added.locator("time")).toHaveCount(1);
   await expect(page.getByTestId("activity").filter({ hasText: "Note added" })).toHaveCount(1);
 
   // Edit that note's text.
-  await dated.getByRole("button", { name: "Edit note" }).click();
-  await dated.getByLabel("Edit note").fill("Finished the OA (90 min)");
-  await dated.getByRole("button", { name: "Save note" }).click();
+  await added.getByRole("button", { name: "Edit note" }).click();
+  await added.getByLabel("Edit note").fill("Finished the OA (90 min)");
+  await added.getByRole("button", { name: "Save note" }).click();
   await expect(
     page.getByTestId("note").filter({ hasText: "Finished the OA (90 min)" }),
   ).toHaveCount(1);

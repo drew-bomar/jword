@@ -77,7 +77,6 @@ const SAFE_SCALAR_FIELDS = new Set([
   "dateFound",
   "datePosted",
   "workArrangement",
-  "noteDate",
 ]);
 
 export function toSummary(item: ApplicationOverview): ApplicationSummary {

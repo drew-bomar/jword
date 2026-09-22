@@ -143,23 +143,16 @@ export const addApplicationNoteSchema = z.strictObject({
   applicationId: uuidSchema,
   expectedVersion: versionSchema,
   note: requiredText(5000, "Note"),
-  noteDate: optionalDate,
 });
 export type AddApplicationNoteCommand = z.infer<typeof addApplicationNoteSchema>;
 
-export const updateApplicationNoteSchema = z
-  .strictObject({
-    requestId: requestIdSchema,
-    applicationId: uuidSchema,
-    noteId: uuidSchema,
-    expectedVersion: versionSchema,
-    note: requiredText(5000, "Note").optional(),
-    /** Omitted keeps the current date; null removes the label. */
-    noteDate: optionalDate,
-  })
-  .refine((value) => value.note !== undefined || value.noteDate !== undefined, {
-    message: "Supply new note text and/or a note date.",
-  });
+export const updateApplicationNoteSchema = z.strictObject({
+  requestId: requestIdSchema,
+  applicationId: uuidSchema,
+  noteId: uuidSchema,
+  expectedVersion: versionSchema,
+  note: requiredText(5000, "Note"),
+});
 export type UpdateApplicationNoteCommand = z.infer<typeof updateApplicationNoteSchema>;
 
 // ---------------------------------------------------------------------------

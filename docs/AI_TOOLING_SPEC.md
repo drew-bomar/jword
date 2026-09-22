@@ -105,7 +105,7 @@ Input:
 }
 ```
 
-Output: safe application detail, including `version`, a page of individual notes with stable `noteId`, text and optional `noteDate`, plus bounded recent activity. Include note pagination metadata so older notes remain reachable through this read tool. Candidate-profile storage is deferred beyond v1; this tool has no profile-data contract.
+Output: safe application detail, including `version`, a page of individual notes with stable `noteId`, text and timestamps, plus bounded recent activity. Include note pagination metadata so older notes remain reachable through this read tool. Candidate-profile storage is deferred beyond v1; this tool has no profile-data contract.
 
 ### `create_application`
 
@@ -193,13 +193,12 @@ Input:
 {
   applicationId: string;
   note: string;
-  expectedVersion: number;   // positive integer from the latest read
-  requestId: string;         // UUID retained for retries of this command
-  noteDate?: string | null;  // optional ISO calendar-date label; omitted means undated
+  expectedVersion: number; // positive integer from the latest read
+  requestId: string; // UUID retained for retries of this command
 }
 ```
 
-Creates an individual application note and a NOTE_ADDED activity atomically, incrementing the application's version once. Return `noteId` and the resulting application version. The optional date label does not change the actual creation or activity timestamp.
+Creates an individual application note and a NOTE_ADDED activity atomically, incrementing the application's version once. Return `noteId` and the resulting application version. Notes carry their real creation and edit timestamps; there is no separate date label ([decision 015](decisions/015-remove-note-date-labels.md)).
 
 ### `update_application_note`
 
@@ -211,12 +210,11 @@ Input:
   noteId: string;
   expectedVersion: number;
   requestId: string;
-  note?: string;             // if supplied, nonblank replacement text
-  noteDate?: string | null;  // omitted keeps date; null removes label
+  note: string; // nonblank replacement text
 }
 ```
 
-Require at least one editable field. Verify that the note belongs to the specified owner and application. Save changed text/date, a NOTE_UPDATED activity, the application version, and retry receipt atomically. An identical patch is a no-op. Return changed field names and stable IDs, not note text in mutation results. Resolve note references using reads first; do not guess among multiple notes. No delete-note tool in v1. See [decision 012](decisions/012-single-notes-section.md).
+Verify that the note belongs to the specified owner and application. Save the new text, a NOTE_UPDATED activity, the application version, and retry receipt atomically. Identical text is a no-op. Return changed field names and stable IDs, not note text in mutation results. Resolve note references using reads first; do not guess among multiple notes. No delete-note tool in v1. See [decision 012](decisions/012-single-notes-section.md).
 
 ### `list_application_activity` (read-only)
 

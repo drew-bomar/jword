@@ -66,7 +66,6 @@ export type Database = {
           body: string
           created_at: string
           id: string
-          note_date: string | null
           updated_at: string
           user_id: string
         }
@@ -75,7 +74,6 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
-          note_date?: string | null
           updated_at?: string
           user_id: string
         }
@@ -84,7 +82,6 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
-          note_date?: string | null
           updated_at?: string
           user_id?: string
         }

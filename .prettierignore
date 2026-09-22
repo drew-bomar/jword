@@ -7,3 +7,4 @@ playwright-report
 pnpm-lock.yaml
 supabase/.temp
 packages/core/src/db/database.types.ts
+.claude

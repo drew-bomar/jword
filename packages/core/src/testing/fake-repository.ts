@@ -493,7 +493,6 @@ export class FakeTrackerRepository implements TrackerRepository {
         userId,
         applicationId: app.id,
         body: noteBody,
-        noteDate: null,
         createdAt: ts,
         updatedAt: ts,
       });
@@ -770,7 +769,6 @@ export class FakeTrackerRepository implements TrackerRepository {
         userId: ctx.actor.userId,
         applicationId: app.id,
         body: command.note,
-        noteDate: command.noteDate ?? null,
         createdAt: ts,
         updatedAt: ts,
       });
@@ -783,7 +781,9 @@ export class FakeTrackerRepository implements TrackerRepository {
         "NOTE_ADDED",
         ctx.actor.actorType,
         "Added a note",
-        { noteId, noteDate: command.noteDate ?? null },
+        {
+          noteId,
+        },
       );
       return this.finishRequest(ctx, command.requestId, op, fp, {
         ok: true,
@@ -798,7 +798,7 @@ export class FakeTrackerRepository implements TrackerRepository {
         summary: "Note added",
         changedFields: ["note"],
         before: {},
-        after: { noteDate: command.noteDate ?? null },
+        after: {},
       });
     });
   }
@@ -827,12 +827,7 @@ export class FakeTrackerRepository implements TrackerRepository {
         throw new JwordError("NOT_FOUND", "Note not found on this application.", {
           reason: "NOTE_NOT_FOUND",
         });
-      const changed: string[] = [];
-      const body = command.note ?? note.body;
-      const noteDate = command.noteDate !== undefined ? command.noteDate : note.noteDate;
-      if (body !== note.body) changed.push("note");
-      if (noteDate !== note.noteDate) changed.push("noteDate");
-      if (changed.length === 0) {
+      if (command.note === note.body) {
         return this.finishRequest(ctx, command.requestId, op, fp, {
           ok: true,
           operation: op,
@@ -851,12 +846,11 @@ export class FakeTrackerRepository implements TrackerRepository {
       const ts = this.now();
       const metadata = {
         noteId: note.noteId,
-        fields: changed,
-        before: { note: note.body, noteDate: note.noteDate },
-        after: { note: body, noteDate },
+        fields: ["note"],
+        before: { note: note.body },
+        after: { note: command.note },
       };
-      note.body = body;
-      note.noteDate = noteDate;
+      note.body = command.note;
       note.updatedAt = ts;
       app.version += 1;
       app.lastActivityAt = ts;
@@ -866,7 +860,7 @@ export class FakeTrackerRepository implements TrackerRepository {
         app.id,
         "NOTE_UPDATED",
         ctx.actor.actorType,
-        `Updated a note (${changed.join(", ")})`,
+        "Updated a note",
         metadata,
       );
       return this.finishRequest(ctx, command.requestId, op, fp, {
@@ -880,9 +874,9 @@ export class FakeTrackerRepository implements TrackerRepository {
         version: app.version,
         activityId: activity.activityId,
         summary: "Note updated",
-        changedFields: changed,
+        changedFields: ["note"],
         before: {},
-        after: command.noteDate !== undefined ? { noteDate } : {},
+        after: {},
       });
     });
   }

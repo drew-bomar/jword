@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
-import { config as loadEnv } from "dotenv";
+import { loadTestEnv } from "./tests/test-env";
 
-loadEnv({ path: ".env.local" });
+loadTestEnv();
 
 const PORT = 3100;
 // Use localhost (not 127.0.0.1): the dev server rebuilds absolute URLs with "localhost", and

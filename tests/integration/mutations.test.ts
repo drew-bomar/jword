@@ -46,7 +46,7 @@ describe("Web-path mutations through the shared services", () => {
     });
     const notes = await db.notes(result.applicationId!);
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ body: "first", note_date: null, id: result.noteId });
+    expect(notes[0]).toMatchObject({ body: "first", id: result.noteId });
     const activities = await db.activities(result.applicationId!);
     expect(activities).toHaveLength(1);
     expect(activities[0]).toMatchObject({ type: "CREATED", actor_type: "USER" });
@@ -252,7 +252,7 @@ describe("Web-path mutations through the shared services", () => {
     });
   });
 
-  it("notes: add, edit text, remove date; NOTE_UPDATED history keeps before/after", async () => {
+  it("notes: add, edit text; NOTE_UPDATED history keeps before/after", async () => {
     const created = await u.services.createApplication(
       { requestId: rid(), company: "NoteCo", title: "SWE" },
       u.actor,
@@ -264,17 +264,15 @@ describe("Web-path mutations through the shared services", () => {
         applicationId: id,
         expectedVersion: 1,
         note: "Finished OA",
-        noteDate: "2026-09-20",
       },
       u.actor,
     );
     expect(added).toMatchObject({ version: 2, changedFields: ["note"] });
-    expect(added.after).toEqual({ noteDate: "2026-09-20" });
+    expect(added.after).toEqual({});
     const noteId = added.noteId!;
     expect((await db.notes(id))[0]).toMatchObject({
       id: noteId,
       body: "Finished OA",
-      note_date: "2026-09-20",
     });
 
     const edited = await u.services.updateApplicationNote(
@@ -284,22 +282,21 @@ describe("Web-path mutations through the shared services", () => {
         noteId,
         expectedVersion: 2,
         note: "Finished OA, felt good",
-        noteDate: null,
       },
       u.actor,
     );
-    expect(edited).toMatchObject({ version: 3, changedFields: ["note", "noteDate"], noteId });
+    expect(edited).toMatchObject({ version: 3, changedFields: ["note"], noteId });
     expect(edited.before).toEqual({});
     expect((await db.notes(id))[0]).toMatchObject({
       body: "Finished OA, felt good",
-      note_date: null,
     });
     const last = (await db.activities(id)).at(-1)!;
     expect(last.type).toBe("NOTE_UPDATED");
     expect(last.metadata).toMatchObject({
       noteId,
-      before: { note: "Finished OA", noteDate: "2026-09-20" },
-      after: { note: "Finished OA, felt good", noteDate: null },
+      fields: ["note"],
+      before: { note: "Finished OA" },
+      after: { note: "Finished OA, felt good" },
     });
 
     const noop = await u.services.updateApplicationNote(

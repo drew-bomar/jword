@@ -78,7 +78,7 @@ describe("createApplication", () => {
     expect(result.noteId).toBeTruthy();
     const view = await services.getApplication({ applicationId: result.applicationId }, OWNER);
     expect(view.notes.items).toHaveLength(1);
-    expect(view.notes.items[0]).toMatchObject({ body: "First impression", noteDate: null });
+    expect(view.notes.items[0]).toMatchObject({ body: "First impression" });
     expect(view.activity.items[0]!.metadata.noteId).toBe(result.noteId);
     expect(view.application.version).toBe(1);
   });
@@ -401,9 +401,9 @@ describe("updateApplicationDetails", () => {
 });
 
 describe("notes", () => {
-  it("adds dated and undated notes, incrementing the version each time", async () => {
+  it("adds notes, incrementing the version each time", async () => {
     const created = await create();
-    const undated = await services.addApplicationNote(
+    const first = await services.addApplicationNote(
       {
         requestId: randomUUID(),
         applicationId: created.applicationId,
@@ -412,24 +412,41 @@ describe("notes", () => {
       },
       OWNER,
     );
-    expect(undated).toMatchObject({ version: 2, after: { noteDate: null } });
-    const dated = await services.addApplicationNote(
+    expect(first).toMatchObject({ version: 2, changedFields: ["note"], before: {}, after: {} });
+    const second = await services.addApplicationNote(
       {
         requestId: randomUUID(),
         applicationId: created.applicationId,
         expectedVersion: 2,
-        note: "Dated",
-        noteDate: "2026-09-20",
+        note: "Second",
       },
       OWNER,
     );
-    expect(dated).toMatchObject({ version: 3, after: { noteDate: "2026-09-20" } });
+    expect(second).toMatchObject({ version: 3 });
     const view = await services.getApplication({ applicationId: created.applicationId }, OWNER);
     expect(view.notes.items).toHaveLength(2);
     expect(view.activity.items.filter((a) => a.type === "NOTE_ADDED")).toHaveLength(2);
   });
 
-  it("edits text and date, removes the date, and no-ops identical patches", async () => {
+  it("rejects the removed noteDate field on add and update", async () => {
+    const created = await create();
+    await expectError(
+      services.addApplicationNote(
+        {
+          requestId: randomUUID(),
+          applicationId: created.applicationId,
+          expectedVersion: 1,
+          note: "Hello",
+          noteDate: "2026-09-20",
+        },
+        OWNER,
+      ),
+      "VALIDATION_ERROR",
+    );
+    expect(repo.notes).toHaveLength(0);
+  });
+
+  it("edits note text and no-ops identical text", async () => {
     const created = await create();
     const added = await services.addApplicationNote(
       {
@@ -437,7 +454,6 @@ describe("notes", () => {
         applicationId: created.applicationId,
         expectedVersion: 1,
         note: "Hello",
-        noteDate: "2026-09-20",
       },
       OWNER,
     );
@@ -454,33 +470,29 @@ describe("notes", () => {
     );
     expect(text).toMatchObject({ changedFields: ["note"], version: 3 });
     expect(text.after).toEqual({});
-    const removeDate = await services.updateApplicationNote(
-      {
-        requestId: randomUUID(),
-        applicationId: created.applicationId,
-        noteId,
-        expectedVersion: 3,
-        noteDate: null,
-      },
-      OWNER,
-    );
-    expect(removeDate).toMatchObject({ changedFields: ["noteDate"], version: 4 });
+    expect(text.before).toEqual({});
     const noop = await services.updateApplicationNote(
       {
         requestId: randomUUID(),
         applicationId: created.applicationId,
         noteId,
-        expectedVersion: 4,
+        expectedVersion: 3,
         note: "Hello again",
-        noteDate: null,
       },
       OWNER,
     );
-    expect(noop).toMatchObject({ noop: true, version: 4 });
+    expect(noop).toMatchObject({ noop: true, version: 3 });
     const view = await services.getApplication({ applicationId: created.applicationId }, OWNER);
-    expect(view.notes.items[0]).toMatchObject({ body: "Hello again", noteDate: null });
+    expect(view.notes.items[0]).toMatchObject({ body: "Hello again" });
     expect(view.notes.items[0]!.createdAt).toBe(repo.notes[0]!.createdAt);
-    expect(view.activity.items.filter((a) => a.type === "NOTE_UPDATED")).toHaveLength(2);
+    const updates = view.activity.items.filter((a) => a.type === "NOTE_UPDATED");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.metadata).toMatchObject({
+      noteId,
+      fields: ["note"],
+      before: { note: "Hello" },
+      after: { note: "Hello again" },
+    });
   });
 
   it("rejects unknown note ids and notes on another user's application", async () => {
@@ -687,7 +699,7 @@ describe("import", () => {
       appliedAt: null,
       dateFound: null,
     });
-    expect(first.notes.items[0]).toMatchObject({ body: "line1\nline2", noteDate: null });
+    expect(first.notes.items[0]).toMatchObject({ body: "line1\nline2" });
     expect(first.activity.items[0]).toMatchObject({ type: "IMPORTED", actorType: "IMPORT" });
     expect(first.activity.items[0]!.metadata.noteId).toBe(first.notes.items[0]!.noteId);
     const second = await services.getApplication(

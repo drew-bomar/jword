@@ -249,9 +249,8 @@ describe("jword MCP tools", () => {
         applicationId: body.applicationId,
         expectedVersion: 1,
         note: "another private note",
-        noteDate: "2026-09-20",
       });
-      expect(note.body).toMatchObject({ ok: true, version: 2, after: { noteDate: "2026-09-20" } });
+      expect(note.body).toMatchObject({ ok: true, version: 2, after: {} });
       expect(typeof note.body.noteId).toBe("string");
       expect(JSON.stringify(note.body)).not.toContain("another private note");
     });

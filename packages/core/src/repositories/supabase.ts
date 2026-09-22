@@ -73,7 +73,6 @@ function mapNote(row: NoteRow): ApplicationNote {
     noteId: row.id,
     applicationId: row.application_id,
     body: row.body,
-    noteDate: row.note_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

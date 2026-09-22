@@ -51,7 +51,6 @@ export interface ApplicationNote {
   noteId: string;
   applicationId: string;
   body: string;
-  noteDate: string | null;
   createdAt: string;
   updatedAt: string;
 }

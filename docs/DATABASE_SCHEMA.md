@@ -159,11 +159,10 @@ One row per individual note in the application's single Notes section. This repl
 | `user_id`        | uuid        | owner; required FK to auth.users                                                   |
 | `application_id` | uuid        | required; composite FK `(user_id, application_id)` to applications `(user_id, id)` |
 | `body`           | text        | required, nonblank note text                                                       |
-| `note_date`      | date        | optional user-selected date label; default null                                    |
 | `created_at`     | timestamptz | actual insertion time, default now                                                 |
 | `updated_at`     | timestamptz | actual latest edit time, default now                                               |
 
-Index `(user_id, application_id, created_at desc, id)` for stable note ordering. Both text and date are editable through narrow add/update note functions; changing or removing the date does not rewrite creation time. Notes inherit owner-scoped RLS, function-only writes, application version checks, and retry protection. Note deletion remains outside v1.
+Index `(user_id, application_id, created_at desc, id)` for stable note ordering. Text is editable through the narrow add/update note functions; the optional date label was removed in [decision 015](decisions/015-remove-note-date-labels.md). Notes inherit owner-scoped RLS, function-only writes, application version checks, and retry protection. Note deletion remains outside v1.
 
 ### `application_activities`
 
@@ -259,7 +258,7 @@ All public wrappers are `security definer` with `search_path = ''`, callable by 
 | `create_application(p_owner_id, p_actor, p_request_id, p_command, p_today)` | company match-or-create, job, application, optional initial note, CREATED activity; duplicate check unless `allowDuplicate` |
 | `update_application_status(...)`                                            | status and/or applied date; STATUS_CHANGED or DETAILS_UPDATED; no-op when unchanged                                         |
 | `update_application_details(...)`                                           | allowlisted application and job fields incl. company relink; DETAILS_UPDATED with before/after                              |
-| `add_application_note(...)` / `update_application_note(...)`                | notes with optional date labels; NOTE_ADDED / NOTE_UPDATED                                                                  |
+| `add_application_note(...)` / `update_application_note(...)`                | add or replace note text; NOTE_ADDED / NOTE_UPDATED (decision 015)                                                          |
 | `import_applications(p_owner_id, p_actor, p_request_id, p_command)`         | all-or-nothing batch of up to 500 rows; no `p_today` because imports never receive date defaults                            |
 | `save_candidate_profile(p_owner_id, p_command)`                             | upsert of the profile row                                                                                                   |
 

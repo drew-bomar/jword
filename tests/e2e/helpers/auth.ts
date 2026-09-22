@@ -1,8 +1,8 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { config as loadEnv } from "dotenv";
+import { loadTestEnv } from "../../test-env";
 
-loadEnv({ path: ".env.local" });
+loadTestEnv();
 
 function admin(): SupabaseClient {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;

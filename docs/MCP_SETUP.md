@@ -79,7 +79,7 @@ Run `claude` in the repo and use `/mcp` to confirm the server is connected.
 Read-only (`readOnlyHint: true`):
 
 - `search_applications` — text/status/priority/date filters, max 25 results, `hasMore` + `nextCursor`, no notes.
-- `get_application` — full safe detail, current `version`, paged notes with `noteId`, recent activity.
+- `get_application` — full safe detail, current `version`, paged notes with `noteId` and timestamps, recent activity.
 - `list_application_activity` — capped chronological timeline.
 - `get_pipeline_summary` — counts by status and stale active applications.
 
@@ -89,7 +89,7 @@ Mutating (`readOnlyHint: false`, `destructiveHint: false`, idempotent via `reque
 - `update_application_status` — any transition; no-op when unchanged; applied-date defaults.
 - `update_application_details` — allowlisted fields only; empty patch rejected.
 - `add_application_note` — new note + NOTE_ADDED; never overwrites.
-- `update_application_note` — edit one note by `noteId` + NOTE_UPDATED.
+- `update_application_note` — replace one note's text by `noteId` + NOTE_UPDATED.
 
 Every input schema is strict: unknown fields are rejected before the handler runs. Mutations
 record actor `CODEX`. There is no delete, batch, SQL, or shell tool.

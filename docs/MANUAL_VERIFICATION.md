@@ -13,9 +13,8 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
    under Date applied, the note in Notes, and a "Created" activity.
 3. **Inline status.** From the detail header (or a table row), change status to Interview → toast,
    badge shows Interview, "Status changed" appears first in Activity with Applied → Interview.
-4. **Notes.** Add a note, click "Add date", pick a date, save → the note shows the date label and
-   "added <timestamp>"; Activity shows "Note added". Edit the note text → "Note updated". Remove the
-   date label → note shows "Undated".
+4. **Notes.** Add a note → it appears with its added timestamp and Activity shows "Note added". Edit
+   the note text → "edited <timestamp>" and "Note updated" in Activity.
 5. **Edit details.** Edit details → change Location and Priority → save → details update and
    "Details updated" lists both fields with before/after.
 6. **Stale edit.** Open the same application in two tabs. Change status in tab A. In tab B change

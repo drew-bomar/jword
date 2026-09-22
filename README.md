@@ -147,7 +147,8 @@ The same migrations apply to a hosted project:
    ```
 
 4. Point `.env.local` (and, for deployment, Vercel environment variables) at the hosted URL, anon key,
-   and service-role key, then run `pnpm owner:create` once against it.
+   and service-role key, then run `pnpm owner:create` once against it. Keep the local stack values in
+   `.env.test.local`: the test suites read that file first and refuse to run against a hosted URL.
 
 ## Security notes
 

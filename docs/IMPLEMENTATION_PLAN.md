@@ -244,7 +244,7 @@ Provide complete record editing and an understandable history.
 - detail page/drawer based on approved UX
 - editable job/application fields
 - timeline with actor, event, and time
-- one Notes section with add/edit text and optional Add date controls, per decision 012
+- one Notes section with add/edit text, per decision 012 (date labels later removed in decision 015)
 - automatic NOTE_ADDED/NOTE_UPDATED history, without a separate summary or timeline-note entry flow
 
 **Out of scope**
@@ -257,7 +257,7 @@ Provide complete record editing and an understandable history.
 
 - direct navigation to a record works
 - every meaningful mutation shows in the timeline
-- undated and dated notes can be created; text and date can be edited, and date labels removed
+- notes can be created and their text edited
 - note edits update the existing note and preserve activity history, application version checks, and retry protection
 - a note's chosen date never changes its actual creation timestamp
 - missing/forbidden records render safe states

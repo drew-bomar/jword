@@ -124,7 +124,7 @@ describe("CSV import: preview then all-or-nothing commit", () => {
     expect(firstApp).toMatchObject({ status: "APPLIED", applied_at: null, date_found: null });
     const notes = await db.notes(first!);
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ body: "line one\nline two", note_date: null });
+    expect(notes[0]).toMatchObject({ body: "line one\nline two" });
     const activity = (await db.activities(first!))[0]!;
     expect(activity).toMatchObject({ type: "IMPORTED", actor_type: "IMPORT" });
     expect((activity.metadata as Record<string, unknown>).noteId).toBe(notes[0]!.id);
