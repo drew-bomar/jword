@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "../db/database.types";
 import type { ApplicationStatus } from "../domain/enums";
 import { JwordError } from "../domain/errors";
+import { normalizeName } from "../domain/normalize";
 import type {
   ApplicationActivity,
   ApplicationDetail,
@@ -30,7 +31,10 @@ import type {
 } from "../watchlist/schemas";
 import type {
   CompanyOption,
+  CompanyRef,
   SafeWatchValue,
+  WatchBoard,
+  WatchSummary,
   WatchActivity,
   WatchedCompany,
   WatchListQuery,
@@ -130,9 +134,7 @@ function mapWatch(row: WatchRow): WatchedCompany {
     watchId: row.watch_id!,
     companyId: row.company_id!,
     company: row.company_name!,
-    provider: row.provider!,
-    boardIdentifier: row.board_identifier,
-    boardUrl: row.board_url,
+    boards: (Array.isArray(row.boards) ? row.boards : []) as unknown as WatchBoard[],
     active: row.active!,
     version: row.version!,
     interestLevel: row.interest_level,
@@ -492,7 +494,7 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
     const text = query.text ? sanitizeSearchText(query.text) : "";
     if (text) request = request.ilike("company_name", `%${text}%`);
     if (query.active !== undefined) request = request.eq("active", query.active);
-    if (query.provider) request = request.eq("provider", query.provider);
+    if (query.provider) request = request.contains("board_providers", [query.provider]);
     const { data, error } = await request
       .order("company_name", { ascending: true })
       .order("watch_id", { ascending: true })
@@ -617,5 +619,86 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
   ): Promise<WatchMutationResult> {
     const { requestId, ...rest } = command;
     return this.mutateWatch("set_company_watch_active", ctx, requestId, rest);
+  }
+
+  // ------------------------------------------------------- board discovery
+  async getCompany(userId: string, companyId: string): Promise<CompanyRef | null> {
+    const { data, error } = await this.client
+      .from("companies")
+      .select("id, name, website_url")
+      .eq("user_id", userId)
+      .eq("id", companyId)
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "get company");
+    return data ? { companyId: data.id, name: data.name, websiteUrl: data.website_url } : null;
+  }
+
+  async findCompanyByName(userId: string, name: string): Promise<CompanyRef | null> {
+    const { data, error } = await this.client
+      .from("companies")
+      .select("id, name, website_url")
+      .eq("user_id", userId)
+      .eq("normalized_name", normalizeName(name))
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "find company");
+    return data ? { companyId: data.id, name: data.name, websiteUrl: data.website_url } : null;
+  }
+
+  async listCompanyJobUrls(userId: string, companyId: string): Promise<string[]> {
+    const { data, error } = await this.client
+      .from("jobs")
+      .select("job_url")
+      .eq("user_id", userId)
+      .eq("company_id", companyId)
+      .not("job_url", "is", null)
+      .limit(500);
+    if (error) throw mapDatabaseError(error, "company job urls");
+    return (data ?? []).map((row) => row.job_url!).filter(Boolean);
+  }
+
+  async listApplicationJobUrls(
+    userId: string,
+  ): Promise<Array<{ companyId: string; company: string; jobUrl: string }>> {
+    const out: Array<{ companyId: string; company: string; jobUrl: string }> = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await this.client
+        .from("application_overview")
+        .select("application_id, company_id, company_name, job_url")
+        .eq("user_id", userId)
+        .not("job_url", "is", null)
+        .order("application_id")
+        .range(offset, offset + 499);
+      if (error) throw mapDatabaseError(error, "application job urls");
+      out.push(
+        ...(data ?? []).map((row) => ({
+          companyId: row.company_id!,
+          company: row.company_name!,
+          jobUrl: row.job_url!,
+        })),
+      );
+      if (!data || data.length < 500) return out;
+    }
+  }
+
+  async listWatchSummaries(userId: string): Promise<WatchSummary[]> {
+    const out: WatchSummary[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await this.client
+        .from("company_watch_overview")
+        .select("watch_id, company_id, company_name, boards")
+        .eq("user_id", userId)
+        .order("watch_id")
+        .range(offset, offset + 499);
+      if (error) throw mapDatabaseError(error, "watch summaries");
+      out.push(
+        ...(data ?? []).map((row) => ({
+          watchId: row.watch_id!,
+          companyId: row.company_id!,
+          company: row.company_name!,
+          boards: (Array.isArray(row.boards) ? row.boards : []) as unknown as WatchBoard[],
+        })),
+      );
+      if (!data || data.length < 500) return out;
+    }
   }
 }

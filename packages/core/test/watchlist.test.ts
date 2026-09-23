@@ -7,6 +7,7 @@ import { createTrackerServices, type TrackerServices } from "../src/services/ind
 import { FakeTrackerRepository } from "../src/testing/fake-repository";
 import {
   addWatchedCompanySchema,
+  boardInputSchema,
   setCompanyWatchStatusSchema,
   updateWatchedCompanySchema,
 } from "../src/watchlist/schemas";
@@ -36,15 +37,17 @@ async function expectError(promise: Promise<unknown>, code: string, reason?: str
   throw new Error(`expected ${code}`);
 }
 
+/** Shorthand: provider/boardIdentifier/boardUrl become a one-board list (OTHER without URL: none). */
 function add(overrides: Record<string, unknown> = {}, actor = OWNER) {
+  const { provider = "GREENHOUSE", boardIdentifier = "stripe", boardUrl, ...rest } = overrides;
+  const boards =
+    provider === "OTHER"
+      ? boardUrl
+        ? [{ provider, boardUrl }]
+        : []
+      : [{ provider, boardIdentifier }];
   return services.addWatchedCompany(
-    {
-      requestId: randomUUID(),
-      company: "Stripe",
-      provider: "GREENHOUSE",
-      boardIdentifier: "stripe",
-      ...overrides,
-    },
+    { requestId: randomUUID(), company: "Stripe", boards, ...rest },
     actor,
   );
 }
@@ -52,35 +55,46 @@ function add(overrides: Record<string, unknown> = {}, actor = OWNER) {
 describe("watchlist schemas", () => {
   const base = { requestId: randomUUID(), company: "Stripe" };
   const ok = (value: unknown) => addWatchedCompanySchema.safeParse(value).success;
+  const board = (value: unknown) => boardInputSchema.safeParse(value).success;
 
-  it("requires a company name or id", () => {
-    expect(ok({ requestId: randomUUID(), provider: "OTHER" })).toBe(false);
-    expect(ok({ requestId: randomUUID(), companyId: randomUUID(), provider: "OTHER" })).toBe(true);
+  it("requires a company name or id; boards are optional", () => {
+    expect(ok({ requestId: randomUUID() })).toBe(false);
+    expect(ok({ requestId: randomUUID(), companyId: randomUUID() })).toBe(true);
+    expect(ok(base)).toBe(true);
   });
 
-  it("requires an identifier for supported providers and forbids one for OTHER", () => {
-    expect(ok({ ...base, provider: "LEVER" })).toBe(false);
-    expect(ok({ ...base, provider: "LEVER", boardIdentifier: "  " })).toBe(false);
-    expect(ok({ ...base, provider: "LEVER", boardIdentifier: "stripe" })).toBe(true);
-    expect(ok({ ...base, provider: "OTHER", boardIdentifier: "stripe" })).toBe(false);
-    expect(ok({ ...base, provider: "OTHER", boardUrl: "https://stripe.com/jobs" })).toBe(true);
-  });
-
-  it("rejects malformed identifiers, derived board URLs, bad interest, and unknown keys", () => {
-    expect(ok({ ...base, provider: "ASHBY", boardIdentifier: "has space" })).toBe(false);
+  it("each board needs an identifier (supported) or a careers URL (OTHER)", () => {
+    expect(board({ provider: "LEVER" })).toBe(false);
+    expect(board({ provider: "LEVER", boardIdentifier: "  " })).toBe(false);
+    expect(board({ provider: "LEVER", boardIdentifier: "stripe" })).toBe(true);
+    expect(board({ provider: "OTHER", boardIdentifier: "stripe", boardUrl: "https://x.co" })).toBe(
+      false,
+    );
+    expect(board({ provider: "OTHER" })).toBe(false);
+    expect(board({ provider: "OTHER", boardUrl: "https://stripe.com/jobs" })).toBe(true);
+    expect(board({ provider: "ASHBY", boardIdentifier: "has space" })).toBe(false);
     expect(
-      ok({
-        ...base,
-        provider: "ASHBY",
-        boardIdentifier: "x",
-        boardUrl: "https://jobs.ashbyhq.com/x",
-      }),
+      board({ provider: "ASHBY", boardIdentifier: "x", boardUrl: "https://jobs.ashbyhq.com/x" }),
     ).toBe(false);
-    expect(ok({ ...base, provider: "OTHER", interestLevel: 6 })).toBe(false);
-    expect(ok({ ...base, provider: "OTHER", interestLevel: 2.5 })).toBe(false);
-    expect(ok({ ...base, provider: "OTHER", websiteUrl: "stripe.com" })).toBe(false);
-    expect(ok({ ...base, provider: "OTHER", active: false })).toBe(false);
-    expect(ok({ ...base, provider: "WORKDAY" })).toBe(false);
+    expect(board({ provider: "WORKDAY", boardIdentifier: "x" })).toBe(false);
+  });
+
+  it("allows at most three boards and no duplicates (any case)", () => {
+    const b = (id: string) => ({ provider: "ASHBY", boardIdentifier: id });
+    expect(ok({ ...base, boards: [b("a"), b("b"), b("c")] })).toBe(true);
+    expect(ok({ ...base, boards: [b("a"), b("b"), b("c"), b("d")] })).toBe(false);
+    expect(ok({ ...base, boards: [b("a"), b("A")] })).toBe(false);
+    expect(ok({ ...base, boards: [b("a"), { provider: "LEVER", boardIdentifier: "a" }] })).toBe(
+      true,
+    );
+  });
+
+  it("rejects bad company fields and unknown keys", () => {
+    expect(ok({ ...base, interestLevel: 6 })).toBe(false);
+    expect(ok({ ...base, interestLevel: 2.5 })).toBe(false);
+    expect(ok({ ...base, websiteUrl: "stripe.com" })).toBe(false);
+    expect(ok({ ...base, active: false })).toBe(false);
+    expect(ok({ ...base, provider: "GREENHOUSE" })).toBe(false);
   });
 
   it("update needs at least one editable field and its own ids", () => {
@@ -89,14 +103,11 @@ describe("watchlist schemas", () => {
     expect(updateWatchedCompanySchema.safeParse({ ...ids, interestLevel: null }).success).toBe(
       true,
     );
+    expect(updateWatchedCompanySchema.safeParse({ ...ids, boards: [] }).success).toBe(true);
     expect(updateWatchedCompanySchema.safeParse({ ...ids, active: true }).success).toBe(false);
     expect(updateWatchedCompanySchema.safeParse({ ...ids, company: "Renamed" }).success).toBe(
       false,
     );
-    expect(
-      updateWatchedCompanySchema.safeParse({ ...ids, provider: "LEVER", boardIdentifier: null })
-        .success,
-    ).toBe(false);
     expect(
       updateWatchedCompanySchema.safeParse({ ...ids, interestLevel: 3, expectedVersion: 0 })
         .success,
@@ -122,10 +133,15 @@ describe("watchlist services", () => {
       active: true,
       version: 1,
     });
-    expect(result.after).toMatchObject({
-      boardUrl: "https://job-boards.greenhouse.io/stripe",
-      interestLevel: 4,
-    });
+    expect(result.after).toMatchObject({ boards: "Greenhouse stripe", interestLevel: 4 });
+    const view = await services.getWatchedCompany({ watchId: result.watchId }, OWNER);
+    expect(view.watch.boards).toEqual([
+      {
+        provider: "GREENHOUSE",
+        boardIdentifier: "stripe",
+        boardUrl: "https://job-boards.greenhouse.io/stripe",
+      },
+    ]);
     expect(result.changedFields).toContain("companyNotes");
     expect(JSON.stringify(result)).not.toContain("payments infra");
     expect(repo.watchActivities).toHaveLength(1);
@@ -216,66 +232,58 @@ describe("watchlist services", () => {
     expect(repo.companies.map((c) => c.name)).toEqual(["Stripe"]);
   });
 
-  it("updates the allowlisted fields, bumps the version, and records changed fields", async () => {
+  it("replaces the board set, bumps the version, and records changed fields", async () => {
     const created = await add();
     const updated = await services.updateWatchedCompany(
       {
         requestId: randomUUID(),
         watchId: created.watchId,
         expectedVersion: 1,
-        provider: "ASHBY",
-        boardIdentifier: "stripe",
+        boards: [
+          { provider: "GREENHOUSE", boardIdentifier: "stripe" },
+          { provider: "LEVER", boardIdentifier: "stripe" },
+          { provider: "OTHER", boardUrl: "https://stripe.com/jobs" },
+        ],
         interestLevel: 5,
         websiteUrl: "https://stripe.com",
       },
       OWNER,
     );
     expect(updated).toMatchObject({ noop: false, version: 2 });
-    expect(updated.changedFields).toEqual(
-      expect.arrayContaining(["provider", "boardUrl", "interestLevel", "websiteUrl"]),
-    );
-    expect(updated.changedFields).not.toContain("boardIdentifier");
+    expect(updated.changedFields).toEqual(["boards", "interestLevel", "websiteUrl"]);
+    expect(updated.after.boards).toBe("Greenhouse stripe, Lever stripe, careers page");
     const view = await services.getWatchedCompany({ watchId: created.watchId }, OWNER);
-    expect(view.watch).toMatchObject({
-      provider: "ASHBY",
-      boardUrl: "https://jobs.ashbyhq.com/stripe",
-      interestLevel: 5,
-      version: 2,
-    });
+    expect(view.watch.boards.map((b) => b.boardUrl)).toEqual([
+      "https://job-boards.greenhouse.io/stripe",
+      "https://jobs.lever.co/stripe",
+      "https://stripe.com/jobs",
+    ]);
     expect(view.activity.items[0]).toMatchObject({ type: "WATCH_UPDATED" });
+
+    const cleared = await services.updateWatchedCompany(
+      { requestId: randomUUID(), watchId: created.watchId, expectedVersion: 2, boards: [] },
+      OWNER,
+    );
+    expect(cleared.after.boards).toBe("no job board");
   });
 
-  it("switching to OTHER needs the identifier cleared and keeps a careers URL", async () => {
-    const created = await add();
+  it("rejects a fourth board, duplicates, and an OTHER board without a URL", async () => {
+    const b = (id: string) => ({ provider: "ASHBY" as const, boardIdentifier: id });
     await expectError(
-      services.updateWatchedCompany(
-        {
-          requestId: randomUUID(),
-          watchId: created.watchId,
-          expectedVersion: 1,
-          provider: "OTHER",
-        },
+      services.addWatchedCompany(
+        { requestId: randomUUID(), company: "Four", boards: [b("a"), b("b"), b("c"), b("d")] },
         OWNER,
       ),
       "VALIDATION_ERROR",
-      "BOARD_IDENTIFIER_NOT_ALLOWED",
     );
-    const moved = await services.updateWatchedCompany(
-      {
-        requestId: randomUUID(),
-        watchId: created.watchId,
-        expectedVersion: 1,
-        provider: "OTHER",
-        boardIdentifier: null,
-        boardUrl: "https://stripe.com/jobs",
-      },
-      OWNER,
+    await expectError(
+      services.addWatchedCompany(
+        { requestId: randomUUID(), company: "Dup", boards: [b("x"), b("X")] },
+        OWNER,
+      ),
+      "VALIDATION_ERROR",
     );
-    expect(moved.after).toMatchObject({
-      provider: "OTHER",
-      boardIdentifier: null,
-      boardUrl: "https://stripe.com/jobs",
-    });
+    expect(repo.watches).toHaveLength(0);
   });
 
   it("identical values are a no-op with a receipt and no audit row", async () => {

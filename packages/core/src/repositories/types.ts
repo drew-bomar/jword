@@ -27,6 +27,8 @@ import type {
 } from "../watchlist/schemas";
 import type {
   CompanyOption,
+  CompanyRef,
+  WatchSummary,
   WatchActivity,
   WatchedCompany,
   WatchListQuery,
@@ -119,4 +121,13 @@ export interface WatchlistRepository {
     ctx: MutationContext,
     command: SetCompanyWatchStatusCommand,
   ): Promise<WatchMutationResult>;
+
+  // Board discovery (decision 019): local reads only; network lookups go through BoardDirectory.
+  getCompany(userId: string, companyId: string): Promise<CompanyRef | null>;
+  findCompanyByName(userId: string, name: string): Promise<CompanyRef | null>;
+  listCompanyJobUrls(userId: string, companyId: string): Promise<string[]>;
+  listApplicationJobUrls(
+    userId: string,
+  ): Promise<Array<{ companyId: string; company: string; jobUrl: string }>>;
+  listWatchSummaries(userId: string): Promise<WatchSummary[]>;
 }

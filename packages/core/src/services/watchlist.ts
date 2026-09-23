@@ -4,9 +4,28 @@ import type { Page } from "../domain/types";
 import { silentLogger, type Logger } from "../logging";
 import type { MutationContext, WatchlistRepository } from "../repositories/types";
 import { parseOrThrow } from "../validation/schemas";
+import { boardNameCandidates } from "../discovery/candidates";
+import { rateBoard } from "../discovery/rank";
+import type {
+  ApplicationWatchSuggestion,
+  BoardConfidence,
+  BoardDirectory,
+  BoardDiscoveryResult,
+  BoardSuggestion,
+  ProbeOutcome,
+} from "../discovery/types";
+import {
+  canonicalBoardUrl,
+  inferBoardFromUrl,
+  SUPPORTED_BOARD_PROVIDERS,
+  type InferredBoard,
+} from "../watchlist/boards";
 import {
   addWatchedCompanySchema,
+  boardKey,
+  discoverBoardsSchema,
   getWatchedCompanySchema,
+  MAX_BOARDS_PER_WATCH,
   listWatchedCompaniesSchema,
   searchCompaniesSchema,
   setCompanyWatchStatusSchema,
@@ -15,6 +34,7 @@ import {
 } from "../watchlist/schemas";
 import type {
   CompanyOption,
+  CompanyRef,
   WatchActivity,
   WatchedCompany,
   WatchMutationResult,
@@ -23,6 +43,35 @@ import type {
 export interface WatchlistServiceDependencies {
   repository: WatchlistRepository;
   logger?: Logger;
+  /** Public board lookups (decision 019). Without one, discovery uses local evidence only. */
+  boardDirectory?: BoardDirectory;
+}
+
+const PROBE_CONCURRENCY = 6;
+const CONFIDENCE_ORDER: Record<BoardConfidence, number> = { high: 0, medium: 1, low: 2 };
+
+/** Run `fn` over `items` with at most `limit` in flight. */
+async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]!);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/** Supported boards named in job URLs, in first-seen order, without duplicates. */
+function boardsFromUrls(urls: string[]): InferredBoard[] {
+  const out: InferredBoard[] = [];
+  for (const url of urls) {
+    const board = inferBoardFromUrl(url);
+    if (board && !out.some((b) => boardKey(b) === boardKey(board))) out.push(board);
+  }
+  return out;
 }
 
 export interface WatchedCompanyView {
@@ -36,7 +85,7 @@ export interface WatchedCompanyView {
  * retry receipt are enforced inside the database transaction. Nothing here fetches jobs.
  */
 export function createWatchlistServices(deps: WatchlistServiceDependencies) {
-  const { repository } = deps;
+  const { repository, boardDirectory } = deps;
   const logger = deps.logger ?? silentLogger;
 
   async function run<T>(
@@ -113,6 +162,156 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
       return run("search_companies", actor, undefined, () =>
         repository.searchCompanies(actor.userId, query.text, query.limit ?? 8),
       );
+    },
+
+    /**
+     * Find a company's likely public job boards. Evidence comes from the owner's saved job URLs
+     * (no network) and, when a directory is configured, from Greenhouse, Lever, and Ashby's
+     * public APIs, tried with names generated from the company name and website. Returns
+     * ranked suggestions with reasons; it never saves anything. The owner picks.
+     */
+    async discoverCompanyBoards(
+      input: unknown,
+      actor: ActorContext,
+    ): Promise<BoardDiscoveryResult> {
+      const query = parseOrThrow(discoverBoardsSchema, input);
+      return run("discover_company_boards", actor, undefined, async () => {
+        let company: CompanyRef | null = null;
+        if (query.companyId) {
+          company = await repository.getCompany(actor.userId, query.companyId);
+          if (!company) {
+            throw new JwordError("NOT_FOUND", "Selected company was not found.", {
+              reason: "COMPANY_NOT_FOUND",
+            });
+          }
+        } else if (query.company) {
+          company = await repository.findCompanyByName(actor.userId, query.company);
+        }
+        const name = company?.name ?? query.company!;
+        const website = query.websiteUrl ?? company?.websiteUrl ?? null;
+        const fromApplications = company
+          ? boardsFromUrls(await repository.listCompanyJobUrls(actor.userId, company.companyId))
+          : [];
+        const candidates = boardNameCandidates(name, website);
+
+        const targets: InferredBoard[] = [...fromApplications];
+        if (boardDirectory) {
+          for (const identifier of candidates) {
+            for (const provider of SUPPORTED_BOARD_PROVIDERS) {
+              const board = {
+                provider,
+                boardIdentifier: identifier,
+                boardUrl: canonicalBoardUrl(provider, identifier),
+              };
+              if (!targets.some((t) => boardKey(t) === boardKey(board))) targets.push(board);
+            }
+          }
+        }
+        const outcomes: ProbeOutcome[] = boardDirectory
+          ? await mapPool(targets, PROBE_CONCURRENCY, (t) =>
+              boardDirectory.probe(t.provider, t.boardIdentifier),
+            )
+          : targets.map(() => ({ status: "error" }) as const);
+
+        const watchers = new Map<string, { watchId: string; company: string }>();
+        for (const watch of await repository.listWatchSummaries(actor.userId)) {
+          for (const board of watch.boards) {
+            watchers.set(boardKey(board), { watchId: watch.watchId, company: watch.company });
+          }
+        }
+
+        const suggestions: BoardSuggestion[] = [];
+        targets.forEach((target, index) => {
+          const outcome = outcomes[index]!;
+          const linked = fromApplications.some((b) => boardKey(b) === boardKey(target));
+          if (outcome.status !== "found" && !linked) return;
+          const { confidence, reasons } = rateBoard({
+            company: name,
+            companyWebsite: website,
+            boardIdentifier: target.boardIdentifier,
+            candidates,
+            fromApplications: linked,
+            outcome,
+          });
+          const found = outcome.status === "found" ? outcome : null;
+          suggestions.push({
+            provider: target.provider,
+            boardIdentifier: target.boardIdentifier,
+            boardUrl: target.boardUrl,
+            confidence,
+            reasons,
+            boardName: found?.boardName ?? null,
+            openJobs: found?.openJobs ?? null,
+            openJobsAtLeast: found?.openJobsAtLeast ?? false,
+            sampleTitles: found?.sampleTitles ?? [],
+            fromApplications: linked,
+            watchedBy: watchers.get(boardKey(target)) ?? null,
+          });
+        });
+        suggestions.sort(
+          (a, b) =>
+            CONFIDENCE_ORDER[a.confidence] - CONFIDENCE_ORDER[b.confidence] ||
+            Number(b.fromApplications) - Number(a.fromApplications) ||
+            (b.openJobs ?? -1) - (a.openJobs ?? -1),
+        );
+
+        const unavailable = boardDirectory
+          ? SUPPORTED_BOARD_PROVIDERS.filter((provider) => {
+              const tried = targets
+                .map((t, i) => ({ t, o: outcomes[i]! }))
+                .filter((x) => x.t.provider === provider);
+              return tried.length > 0 && tried.every((x) => x.o.status === "error");
+            })
+          : [...SUPPORTED_BOARD_PROVIDERS];
+
+        return {
+          company: name,
+          companyId: company?.companyId ?? null,
+          candidates,
+          suggestions,
+          unavailable,
+        };
+      });
+    },
+
+    /**
+     * Companies you applied to but do not watch yet, with the boards their saved job URLs
+     * point at (up to three each). Local data only; no network calls.
+     */
+    async suggestWatchesFromApplications(
+      actor: ActorContext,
+    ): Promise<ApplicationWatchSuggestion[]> {
+      return run("suggest_watches_from_applications", actor, undefined, async () => {
+        const [rows, watches] = await Promise.all([
+          repository.listApplicationJobUrls(actor.userId),
+          repository.listWatchSummaries(actor.userId),
+        ]);
+        const watchedCompanies = new Set(watches.map((w) => w.companyId));
+        const watchedBoards = new Set(watches.flatMap((w) => w.boards.map(boardKey)));
+        const byCompany = new Map<string, { company: string; urls: string[] }>();
+        for (const row of rows) {
+          if (watchedCompanies.has(row.companyId)) continue;
+          const entry = byCompany.get(row.companyId) ?? { company: row.company, urls: [] };
+          entry.urls.push(row.jobUrl);
+          byCompany.set(row.companyId, entry);
+        }
+        const out: ApplicationWatchSuggestion[] = [];
+        for (const [companyId, entry] of byCompany) {
+          const boards = boardsFromUrls(entry.urls)
+            .filter((b) => !watchedBoards.has(boardKey(b)))
+            .slice(0, MAX_BOARDS_PER_WATCH);
+          if (!boards.length) continue;
+          out.push({
+            companyId,
+            company: entry.company,
+            applicationCount: entry.urls.length,
+            boards,
+          });
+        }
+        return out.sort(
+          (a, b) => b.applicationCount - a.applicationCount || a.company.localeCompare(b.company),
+        );
+      });
     },
 
     // ------------------------------------------------------------- mutations

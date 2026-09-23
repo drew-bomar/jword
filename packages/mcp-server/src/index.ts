@@ -2,6 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   createClock,
+  createPublicBoardDirectory,
   createTrackerServices,
   stderrLogger,
   SupabaseTrackerRepository,
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
     repository: new SupabaseTrackerRepository(client),
     clock: createClock(env.timeZone),
     logger: stderrLogger,
+    boardDirectory: createPublicBoardDirectory(),
   });
   const actor: ActorContext = { userId: env.ownerUserId, actorType: "CODEX" };
 

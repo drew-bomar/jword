@@ -16,8 +16,7 @@ describe("jword MCP watchlist tools", () => {
   it("adds, lists, updates, and deactivates with CODEX as the actor", async () => {
     const created = await add({
       company: "Stripe",
-      provider: "GREENHOUSE",
-      boardIdentifier: "stripe",
+      boards: [{ provider: "GREENHOUSE", boardIdentifier: "stripe" }],
     });
     expect(created.raw.isError).toBe(false);
     expect(created.body).toMatchObject({
@@ -26,14 +25,18 @@ describe("jword MCP watchlist tools", () => {
       companyCreated: true,
       active: true,
       version: 1,
-      after: { boardUrl: "https://job-boards.greenhouse.io/stripe" },
+      after: { boards: "Greenhouse stripe" },
     });
     const watchId = created.body.watchId as string;
 
     const list = await h.call("list_watched_companies", { text: "str" });
     expect(list.body).toMatchObject({ count: 1, hasMore: false });
     const item = (list.body.items as Array<Record<string, unknown>>)[0]!;
-    expect(item).toMatchObject({ watchId, provider: "GREENHOUSE", version: 1 });
+    expect(item).toMatchObject({
+      watchId,
+      version: 1,
+      boards: [{ provider: "GREENHOUSE", boardUrl: "https://job-boards.greenhouse.io/stripe" }],
+    });
     expect(item).not.toHaveProperty("companyNotes");
 
     const updated = await h.call("update_watched_company", {
@@ -63,8 +66,11 @@ describe("jword MCP watchlist tools", () => {
   });
 
   it("returns ALREADY_WATCHED with the existing watch id instead of a second watch", async () => {
-    const first = await add({ company: "Ramp", provider: "ASHBY", boardIdentifier: "ramp" });
-    const dup = await add({ company: "ramp", provider: "OTHER" });
+    const first = await add({
+      company: "Ramp",
+      boards: [{ provider: "ASHBY", boardIdentifier: "ramp" }],
+    });
+    const dup = await add({ company: "ramp" });
     expect(dup.raw.isError).toBe(true);
     expect(dup.body).toMatchObject({
       ok: false,
@@ -81,7 +87,7 @@ describe("jword MCP watchlist tools", () => {
   it("rejects unknown fields, stale versions, and another owner's watch id", async () => {
     const unknown = await h.client.callTool({
       name: "add_watched_company",
-      arguments: { requestId: crypto.randomUUID(), company: "X", provider: "OTHER", active: false },
+      arguments: { requestId: crypto.randomUUID(), company: "X", active: false },
     });
     expect(unknown.isError).toBe(true);
     expect(h.repo.watches).toHaveLength(0);
@@ -90,8 +96,7 @@ describe("jword MCP watchlist tools", () => {
       {
         requestId: crypto.randomUUID(),
         company: "Theirs",
-        provider: "LEVER",
-        boardIdentifier: "theirs",
+        boards: [{ provider: "LEVER", boardIdentifier: "theirs" }],
       },
       { userId: OTHER_ID, actorType: "USER" },
     );
@@ -106,7 +111,7 @@ describe("jword MCP watchlist tools", () => {
     const foreignRead = await h.call("get_watched_company", { watchId: theirs.watchId });
     expect(foreignRead.body).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
 
-    const mine = await add({ company: "Mine", provider: "OTHER" });
+    const mine = await add({ company: "Mine" });
     const stale = await h.call("update_watched_company", {
       requestId: crypto.randomUUID(),
       watchId: mine.body.watchId,
@@ -124,7 +129,11 @@ describe("jword MCP watchlist tools", () => {
 
   it("replays an identical retry and flags a changed command under the same request id", async () => {
     const requestId = crypto.randomUUID();
-    const args = { requestId, company: "Linear", provider: "ASHBY", boardIdentifier: "linear" };
+    const args = {
+      requestId,
+      company: "Linear",
+      boards: [{ provider: "ASHBY", boardIdentifier: "linear" }],
+    };
     const first = await h.call("add_watched_company", args);
     const again = await h.call("add_watched_company", args);
     expect(again.body).toMatchObject({ replayed: true, watchId: first.body.watchId });
@@ -132,5 +141,34 @@ describe("jword MCP watchlist tools", () => {
     expect(changed.body).toMatchObject({
       error: { code: "CONFLICT", reason: "REQUEST_ID_REUSED" },
     });
+  });
+
+  it("discovers boards (fixture directory) and suggests companies from applications", async () => {
+    const found = await h.call("discover_company_boards", { company: "Stripe" });
+    expect(found.raw.isError).toBe(false);
+    const suggestions = found.body.suggestions as Array<Record<string, unknown>>;
+    expect(suggestions.map((s) => [s.provider, s.confidence])).toEqual([
+      ["GREENHOUSE", "high"],
+      ["LEVER", "high"],
+    ]);
+    expect(h.repo.watches).toHaveLength(0);
+
+    await h.seed(OWNER_ID, {
+      company: "Datadog",
+      title: "SWE",
+      jobUrl: "https://job-boards.greenhouse.io/datadog/jobs/1",
+    });
+    const suggested = await h.call("suggest_watches_from_applications", {});
+    expect(suggested.body).toMatchObject({
+      count: 1,
+      items: [
+        { company: "Datadog", boards: [{ provider: "GREENHOUSE", boardIdentifier: "datadog" }] },
+      ],
+    });
+    const rejected = await h.client.callTool({
+      name: "suggest_watches_from_applications",
+      arguments: { userId: OTHER_ID },
+    });
+    expect(rejected.isError).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { creationDates, statusAppliedDate } from "../domain/date-policy";
-import type { ActivityType, ApplicationStatus, AtsProvider } from "../domain/enums";
+import type { ActivityType, ApplicationStatus } from "../domain/enums";
 import { JwordError, type DuplicateCandidate } from "../domain/errors";
 import { cleanText, normalizeName } from "../domain/normalize";
 import type {
@@ -32,14 +32,20 @@ import type {
   UpdateApplicationStatusCommand,
 } from "../validation/schemas";
 import { canonicalBoardUrl, isValidBoardIdentifier } from "../watchlist/boards";
-import type {
-  AddWatchedCompanyCommand,
-  SetCompanyWatchStatusCommand,
-  UpdateWatchedCompanyCommand,
+import {
+  boardKey,
+  MAX_BOARDS_PER_WATCH,
+  type AddWatchedCompanyCommand,
+  type BoardInput,
+  type SetCompanyWatchStatusCommand,
+  type UpdateWatchedCompanyCommand,
 } from "../watchlist/schemas";
 import type {
   CompanyOption,
+  CompanyRef,
   SafeWatchValue,
+  WatchBoard,
+  WatchSummary,
   WatchActivity,
   WatchedCompany,
   WatchListQuery,
@@ -61,9 +67,7 @@ interface WatchRecord {
   userId: string;
   companyId: string;
   active: boolean;
-  provider: AtsProvider;
-  boardIdentifier: string | null;
-  boardUrl: string | null;
+  boards: WatchBoard[];
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -1022,9 +1026,7 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
       watchId: watch.id,
       companyId: company.id,
       company: company.name,
-      provider: watch.provider,
-      boardIdentifier: watch.boardIdentifier,
-      boardUrl: watch.boardUrl,
+      boards: structuredClone(watch.boards),
       active: watch.active,
       version: watch.version,
       interestLevel: company.interestLevel ?? null,
@@ -1054,7 +1056,7 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
       .map((w) => this.watchView(w))
       .filter((w) => !text || w.company.toLowerCase().includes(text))
       .filter((w) => query.active === undefined || w.active === query.active)
-      .filter((w) => !query.provider || w.provider === query.provider)
+      .filter((w) => !query.provider || w.boards.some((b) => b.provider === query.provider))
       .sort((a, b) => a.company.localeCompare(b.company) || a.watchId.localeCompare(b.watchId));
     const slice = rows.slice(offset, offset + limit + 1);
     const hasMore = slice.length > limit;
@@ -1109,6 +1111,45 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
       });
   }
 
+  async getCompany(userId: string, companyId: string): Promise<CompanyRef | null> {
+    const c = this.companies.find((x) => x.userId === userId && x.id === companyId);
+    return c ? { companyId: c.id, name: c.name, websiteUrl: c.websiteUrl ?? null } : null;
+  }
+
+  async findCompanyByName(userId: string, name: string): Promise<CompanyRef | null> {
+    const c = this.companies.find(
+      (x) => x.userId === userId && x.normalizedName === normalizeName(name),
+    );
+    return c ? { companyId: c.id, name: c.name, websiteUrl: c.websiteUrl ?? null } : null;
+  }
+
+  async listCompanyJobUrls(userId: string, companyId: string): Promise<string[]> {
+    return this.jobs
+      .filter((j) => j.userId === userId && j.companyId === companyId && j.jobUrl)
+      .map((j) => j.jobUrl!);
+  }
+
+  async listApplicationJobUrls(
+    userId: string,
+  ): Promise<Array<{ companyId: string; company: string; jobUrl: string }>> {
+    return this.applications
+      .filter((a) => a.userId === userId)
+      .map((a) => this.overview(a))
+      .filter((o) => o.jobUrl)
+      .map((o) => ({ companyId: o.companyId, company: o.company, jobUrl: o.jobUrl! }));
+  }
+
+  async listWatchSummaries(userId: string): Promise<WatchSummary[]> {
+    return this.watches
+      .filter((w) => w.userId === userId)
+      .map((w) => ({
+        watchId: w.id,
+        companyId: w.companyId,
+        company: this.companies.find((c) => c.id === w.companyId)!.name,
+        boards: structuredClone(w.boards),
+      }));
+  }
+
   private beginWatchRequest(
     ctx: MutationContext,
     requestId: string,
@@ -1140,64 +1181,85 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
     return { ...result, replayed: false };
   }
 
-  /** Mirrors jword.resolve_board_url(): the final board configuration and its stored URL. */
-  private resolveBoardUrl(
-    provider: AtsProvider,
-    identifier: string | null,
-    otherUrl: string | null,
-  ): string | null {
-    if (provider === "OTHER") {
-      if (identifier !== null) {
-        throw new JwordError(
-          "VALIDATION_ERROR",
+  /** Mirrors jword.resolve_board_url() for one board. */
+  private resolveBoard(board: BoardInput): WatchBoard {
+    const identifier = cleanText(board.boardIdentifier);
+    const otherUrl = cleanText(board.boardUrl);
+    const fail = (message: string, reason: string) =>
+      new JwordError("VALIDATION_ERROR", message, { reason });
+    if (board.provider === "OTHER") {
+      if (identifier !== null)
+        throw fail(
           "A board identifier applies only to Greenhouse, Lever, or Ashby.",
-          { reason: "BOARD_IDENTIFIER_NOT_ALLOWED" },
+          "BOARD_IDENTIFIER_NOT_ALLOWED",
         );
-      }
-      return otherUrl;
+      if (otherUrl === null)
+        throw fail("An Other board needs its careers page URL.", "BOARD_URL_REQUIRED");
+      return { provider: "OTHER", boardIdentifier: null, boardUrl: otherUrl };
     }
-    if (identifier === null) {
-      throw new JwordError("VALIDATION_ERROR", "This provider needs a board identifier.", {
-        reason: "BOARD_IDENTIFIER_REQUIRED",
-      });
-    }
-    if (!isValidBoardIdentifier(identifier)) {
-      throw new JwordError("VALIDATION_ERROR", "Board identifier has an invalid format.", {
-        reason: "BOARD_IDENTIFIER_INVALID",
-      });
-    }
-    if (otherUrl !== null) {
-      throw new JwordError(
-        "VALIDATION_ERROR",
-        "The board URL is set from the provider and identifier.",
-        { reason: "BOARD_URL_DERIVED" },
-      );
-    }
-    return canonicalBoardUrl(provider, identifier);
+    if (identifier === null)
+      throw fail("This provider needs a board identifier.", "BOARD_IDENTIFIER_REQUIRED");
+    if (!isValidBoardIdentifier(identifier))
+      throw fail("Board identifier has an invalid format.", "BOARD_IDENTIFIER_INVALID");
+    if (otherUrl !== null)
+      throw fail("The board URL is set from the provider and identifier.", "BOARD_URL_DERIVED");
+    return {
+      provider: board.provider,
+      boardIdentifier: identifier,
+      boardUrl: canonicalBoardUrl(board.provider, identifier),
+    };
   }
 
-  private assertBoardFree(
+  /** Mirrors jword.normalize_boards(): shape, no duplicates, max three, not watched elsewhere. */
+  private normalizeBoards(
     userId: string,
-    provider: AtsProvider,
-    identifier: string | null,
-    excludeWatchId: string | null,
-  ) {
-    if (identifier === null) return;
-    const clash = this.watches.find(
-      (w) =>
-        w.userId === userId &&
-        w.provider === provider &&
-        w.boardIdentifier?.toLowerCase() === identifier.toLowerCase() &&
-        w.id !== excludeWatchId,
-    );
-    if (clash) {
-      const company = this.companies.find((c) => c.id === clash.companyId)!.name;
-      throw new JwordError("CONFLICT", `This board is already watched for ${company}.`, {
-        reason: "BOARD_ALREADY_WATCHED",
-        watchId: clash.id,
-        company,
+    boards: BoardInput[] | undefined,
+    watchId: string | null,
+  ): WatchBoard[] {
+    const list = boards ?? [];
+    if (list.length > MAX_BOARDS_PER_WATCH) {
+      throw new JwordError("VALIDATION_ERROR", "A company can have at most three boards.", {
+        reason: "TOO_MANY_BOARDS",
       });
     }
+    const seen = new Set<string>();
+    return list.map((input) => {
+      const board = this.resolveBoard(input);
+      const key = boardKey(board);
+      if (seen.has(key))
+        throw new JwordError("VALIDATION_ERROR", "The same board is listed twice.", {
+          reason: "DUPLICATE_BOARD",
+        });
+      seen.add(key);
+      if (board.boardIdentifier) {
+        const clash = this.watches.find(
+          (w) =>
+            w.userId === userId &&
+            w.id !== watchId &&
+            w.boards.some((b) => b.boardIdentifier && boardKey(b) === key),
+        );
+        if (clash) {
+          const company = this.companies.find((c) => c.id === clash.companyId)!.name;
+          throw new JwordError("CONFLICT", `This board is already watched for ${company}.`, {
+            reason: "BOARD_ALREADY_WATCHED",
+            watchId: clash.id,
+            company,
+          });
+        }
+      }
+      return board;
+    });
+  }
+
+  private boardsLabel(boards: WatchBoard[]): string {
+    if (!boards.length) return "no job board";
+    return boards
+      .map((b) =>
+        b.provider === "OTHER"
+          ? "careers page"
+          : `${b.provider.charAt(0)}${b.provider.slice(1).toLowerCase()} ${b.boardIdentifier}`,
+      )
+      .join(", ");
   }
 
   private lockWatch(userId: string, watchId: string, expectedVersion: number): WatchRecord {
@@ -1282,12 +1344,6 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
     return record;
   }
 
-  private providerLabel(provider: AtsProvider): string {
-    return provider === "OTHER"
-      ? "no supported job board"
-      : provider.charAt(0) + provider.slice(1).toLowerCase();
-  }
-
   async createWatch(
     ctx: MutationContext,
     command: AddWatchedCompanyCommand,
@@ -1314,43 +1370,23 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
           },
         );
       }
-      const identifier = cleanText(command.boardIdentifier);
-      const boardUrl = this.resolveBoardUrl(
-        command.provider,
-        identifier,
-        cleanText(command.boardUrl),
-      );
-      this.assertBoardFree(userId, command.provider, identifier, null);
+      const boards = this.normalizeBoards(userId, command.boards, null);
       const ts = this.now();
       const watch: WatchRecord = {
         id: randomUUID(),
         userId,
         companyId: company.id,
         active: true,
-        provider: command.provider,
-        boardIdentifier: identifier,
-        boardUrl,
+        boards,
         version: 1,
         createdAt: ts,
         updatedAt: ts,
       };
       this.watches.push(watch);
       const companyChanges = this.applyCompanyFields(company, command);
-      const changedFields = [
-        "provider",
-        "boardIdentifier",
-        "boardUrl",
-        "active",
-        ...companyChanges.changed,
-      ];
-      const after = {
-        provider: watch.provider,
-        boardIdentifier: identifier,
-        boardUrl,
-        active: true,
-        ...companyChanges.after,
-      };
-      const summary = `Started watching ${company.name} (${this.providerLabel(watch.provider)})`;
+      const changedFields = ["active", "boards", ...companyChanges.changed];
+      const after = { active: true, boards: this.boardsLabel(boards), ...companyChanges.after };
+      const summary = `Started watching ${company.name} (${this.boardsLabel(boards)})`;
       const activity = this.addWatchActivity(
         userId,
         watch.id,
@@ -1363,6 +1399,7 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
           fields: changedFields,
           before: companyChanges.before,
           after,
+          boards,
         },
       );
       return this.finishWatchRequest(ctx, command.requestId, op, fp, {
@@ -1398,32 +1435,17 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
       const userId = ctx.actor.userId;
       const watch = this.lockWatch(userId, command.watchId, command.expectedVersion);
       const company = this.companies.find((c) => c.id === watch.companyId && c.userId === userId)!;
-      const provider = command.provider ?? watch.provider;
-      const identifier =
-        command.boardIdentifier !== undefined
-          ? cleanText(command.boardIdentifier)
-          : watch.boardIdentifier;
-      const otherUrl =
-        command.boardUrl !== undefined
-          ? cleanText(command.boardUrl)
-          : provider === "OTHER" && watch.provider === "OTHER"
-            ? watch.boardUrl
-            : null;
-      const boardUrl = this.resolveBoardUrl(provider, identifier, otherUrl);
       const changedFields: string[] = [];
       const before: Record<string, SafeWatchValue> = {};
       const after: Record<string, SafeWatchValue> = {};
-      const track = (field: string, from: SafeWatchValue, to: SafeWatchValue) => {
-        if (from === to) return;
-        changedFields.push(field);
-        before[field] = from;
-        after[field] = to;
-      };
-      track("provider", watch.provider, provider);
-      track("boardIdentifier", watch.boardIdentifier, identifier);
-      track("boardUrl", watch.boardUrl, boardUrl);
-      if (changedFields.includes("provider") || changedFields.includes("boardIdentifier")) {
-        this.assertBoardFree(userId, provider, identifier, watch.id);
+      if (command.boards !== undefined) {
+        const next = this.normalizeBoards(userId, command.boards, watch.id);
+        if (JSON.stringify(next) !== JSON.stringify(watch.boards)) {
+          changedFields.push("boards");
+          before.boards = this.boardsLabel(watch.boards);
+          after.boards = this.boardsLabel(next);
+          watch.boards = next;
+        }
       }
       const companyChanges = this.applyCompanyFields(company, command);
       changedFields.push(...companyChanges.changed);
@@ -1451,13 +1473,8 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
           after: {},
         });
       }
-      Object.assign(watch, {
-        provider,
-        boardIdentifier: identifier,
-        boardUrl,
-        version: watch.version + 1,
-        updatedAt: this.now(),
-      });
+      watch.version += 1;
+      watch.updatedAt = this.now();
       const summary = `Updated watch for ${company.name}`;
       const activity = this.addWatchActivity(
         userId,
@@ -1465,11 +1482,7 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
         "WATCH_UPDATED",
         ctx.actor.actorType,
         summary,
-        {
-          fields: changedFields,
-          before,
-          after,
-        },
+        { fields: changedFields, before, after },
       );
       return this.finishWatchRequest(ctx, command.requestId, op, fp, {
         ...base,

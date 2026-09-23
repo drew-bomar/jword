@@ -8,6 +8,8 @@ const READ_TOOLS = [
   "get_pipeline_summary",
   "list_watched_companies",
   "get_watched_company",
+  "discover_company_boards",
+  "suggest_watches_from_applications",
 ];
 const MUTATION_TOOLS = [
   "create_application",
@@ -29,7 +31,7 @@ describe("jword MCP tools", () => {
     await h.close();
   });
 
-  it("lists exactly the fourteen approved tools with correct annotations and strict schemas", async () => {
+  it("lists exactly the sixteen approved tools with correct annotations and strict schemas", async () => {
     const { tools } = await h.client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([...READ_TOOLS, ...MUTATION_TOOLS].sort());
     for (const tool of tools) {

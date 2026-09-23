@@ -27,6 +27,7 @@ import {
 import type { Logger } from "../logging";
 import { silentLogger } from "../logging";
 import { createWatchlistServices } from "./watchlist";
+import type { BoardDirectory } from "../discovery/types";
 import type {
   MutationContext,
   TrackerRepository,
@@ -51,6 +52,8 @@ import {
 
 export interface ServiceDependencies {
   repository: TrackerRepository & WatchlistRepository;
+  /** Public job-board lookups for watchlist discovery (decision 019). */
+  boardDirectory?: BoardDirectory;
   clock: Clock;
   logger?: Logger;
 }
@@ -174,7 +177,7 @@ export function createTrackerServices(deps: ServiceDependencies) {
 
   return {
     // Company watchlist (decision 018): same repository, same entry points.
-    ...createWatchlistServices({ repository, logger }),
+    ...createWatchlistServices({ repository, logger, boardDirectory: deps.boardDirectory }),
 
     // ----------------------------------------------------------------- reads
     async searchApplications(

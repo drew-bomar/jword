@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  adminClient,
   anonClient,
   cleanupUsers,
   closePg,
@@ -9,8 +10,16 @@ import {
   mcpServicesFor,
   pgQuery,
   rid,
+  TODAY,
   type TestUser,
 } from "./helpers";
+import {
+  createFixtureBoardDirectory,
+  createTrackerServices,
+  fixedClock,
+  SupabaseTrackerRepository,
+  type Json,
+} from "@jword/core";
 
 /** Company watchlist (decision 018) against the local database. */
 describe("company watchlist: permissions, integrity, and atomicity", () => {
@@ -39,14 +48,22 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
       owner.actor,
     );
     const created = await owner.services.addWatchedCompany(
-      { requestId: rid(), company: " stripe ", provider: "GREENHOUSE", boardIdentifier: "stripe" },
+      {
+        requestId: rid(),
+        company: " stripe ",
+        boards: [{ provider: "GREENHOUSE", boardIdentifier: "stripe" }],
+      },
       owner.actor,
     );
     expect(created).toMatchObject({ companyId: app.companyId, companyCreated: false, version: 1 });
     watchId = created.watchId;
     companyId = created.companyId;
     const theirs = await other.services.addWatchedCompany(
-      { requestId: rid(), company: "Theirs", provider: "LEVER", boardIdentifier: "theirs" },
+      {
+        requestId: rid(),
+        company: "Theirs",
+        boards: [{ provider: "LEVER", boardIdentifier: "theirs" }],
+      },
       other.actor,
     );
     otherWatchId = theirs.watchId;
@@ -59,7 +76,11 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
   });
 
   it("owner reads own watch rows, audit, and the overview; another user sees none", async () => {
-    for (const table of ["company_watches", "company_watch_activities"] as const) {
+    for (const table of [
+      "company_watches",
+      "company_watch_boards",
+      "company_watch_activities",
+    ] as const) {
       const mine = await owner.client.from(table).select("*");
       expect(mine.error, table).toBeNull();
       expect(mine.data?.length, table).toBe(1);
@@ -69,7 +90,14 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
       expect.objectContaining({
         watch_id: watchId,
         company_name: "Stripe",
-        board_url: "https://job-boards.greenhouse.io/stripe",
+        boards: [
+          {
+            provider: "GREENHOUSE",
+            boardIdentifier: "stripe",
+            boardUrl: "https://job-boards.greenhouse.io/stripe",
+          },
+        ],
+        board_providers: ["GREENHOUSE"],
         application_count: 1,
         last_event_type: "WATCH_CREATED",
       }),
@@ -119,9 +147,17 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
     const insert = await owner.client.from("company_watches").insert({
       user_id: owner.id,
       company_id: companyId,
-      provider: "OTHER",
     });
     expect(denied(insert.error)).toBe(true);
+    const board = await owner.client.from("company_watch_boards").insert({
+      user_id: owner.id,
+      watch_id: watchId,
+      position: 2,
+      provider: "LEVER",
+      board_identifier: "sneaky",
+      board_url: "https://jobs.lever.co/sneaky",
+    });
+    expect(denied(board.error)).toBe(true);
     const update = await owner.client
       .from("company_watches")
       .update({ active: false })
@@ -141,12 +177,12 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
     expect(await audit(watchId)).toHaveLength(1);
   });
 
-  it("the composite FK blocks cross-owner links; constraints guard uniqueness and board shape", async () => {
+  it("composite FKs block cross-owner links; constraints guard uniqueness, board shape, and the cap of three", async () => {
     await expect(
-      pgQuery(
-        "insert into public.company_watches (user_id, company_id, provider) values ($1, $2, 'OTHER')",
-        [owner.id, otherCompanyId],
-      ),
+      pgQuery("insert into public.company_watches (user_id, company_id) values ($1, $2)", [
+        owner.id,
+        otherCompanyId,
+      ]),
     ).rejects.toMatchObject({ code: "23503" });
     await expect(
       pgQuery(
@@ -156,34 +192,46 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
     ).rejects.toMatchObject({ code: "23503" });
     await expect(
       pgQuery(
-        "insert into public.company_watches (user_id, company_id, provider) values ($1, $2, 'OTHER')",
-        [owner.id, companyId],
+        "insert into public.company_watch_boards (user_id, watch_id, position, provider, board_identifier, board_url) values ($1, $2, 2, 'ASHBY', 'x', 'https://jobs.ashbyhq.com/x')",
+        [owner.id, otherWatchId],
       ),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      pgQuery("insert into public.company_watches (user_id, company_id) values ($1, $2)", [
+        owner.id,
+        companyId,
+      ]),
     ).rejects.toMatchObject({ code: "23505" });
-    const scratch = await pgQuery<{ id: string }>(
-      "insert into public.companies (user_id, name, normalized_name) values ($1, 'Scratch', 'scratch') returning id",
-      [owner.id],
-    );
-    await expect(
+    const board = (provider: string, identifier: string | null, url: string, position = 2) =>
       pgQuery(
-        "insert into public.company_watches (user_id, company_id, provider, board_identifier, board_url) values ($1, $2, 'LEVER', 'scratch', 'https://evil.example/scratch')",
-        [owner.id, scratch.rows[0]!.id],
-      ),
-    ).rejects.toMatchObject({ code: "23514" });
+        "insert into public.company_watch_boards (user_id, watch_id, position, provider, board_identifier, board_url) values ($1, $2, $3, $4, $5, $6)",
+        [owner.id, watchId, position, provider, identifier, url],
+      );
+    // Board URL must be the canonical one; OTHER has no identifier; position caps at three.
+    await expect(board("LEVER", "scratch", "https://evil.example/scratch")).rejects.toMatchObject({
+      code: "23514",
+    });
+    await expect(board("OTHER", "x", "https://x.example/jobs")).rejects.toMatchObject({
+      code: "23514",
+    });
     await expect(
-      pgQuery(
-        "insert into public.company_watches (user_id, company_id, provider) values ($1, $2, 'ASHBY')",
-        [owner.id, scratch.rows[0]!.id],
-      ),
+      board("ASHBY", "fourth", "https://jobs.ashbyhq.com/fourth", 4),
     ).rejects.toMatchObject({ code: "23514" });
-    await pgQuery("delete from public.companies where id = $1", [scratch.rows[0]!.id]);
+    // The same board under a second company, any case, violates the owner-wide unique index.
+    await expect(board("LEVER", "THEIRS", "https://jobs.lever.co/THEIRS")).resolves.toBeTruthy();
+    await pgQuery("delete from public.company_watch_boards where watch_id = $1 and position = 2", [
+      watchId,
+    ]);
+    await expect(
+      board("GREENHOUSE", "STRIPE", "https://job-boards.greenhouse.io/STRIPE"),
+    ).rejects.toMatchObject({ code: "23505" });
   });
 
   it("a selected company id owned by someone else is NOT_FOUND and writes nothing", async () => {
     const receiptsBefore = (await db.receipts(owner.id)).length;
     await expectJwordError(
       owner.services.addWatchedCompany(
-        { requestId: rid(), companyId: otherCompanyId, provider: "OTHER" },
+        { requestId: rid(), companyId: otherCompanyId },
         owner.actor,
       ),
       "NOT_FOUND",
@@ -195,10 +243,7 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
 
   it("a second watch for the same company is ALREADY_WATCHED with the existing id", async () => {
     const error = await expectJwordError(
-      owner.services.addWatchedCompany(
-        { requestId: rid(), company: "STRIPE", provider: "OTHER" },
-        owner.actor,
-      ),
+      owner.services.addWatchedCompany({ requestId: rid(), company: "STRIPE" }, owner.actor),
       "CONFLICT",
       "ALREADY_WATCHED",
     );
@@ -208,20 +253,30 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
   it("direct RPC input is validated before anything is written", async () => {
     const receiptsBefore = (await db.receipts(owner.id)).length;
     const companiesBefore = (await db.companies(owner.id)).length;
-    const bad: Array<Record<string, string | number | boolean>> = [
-      { company: "X", provider: "OTHER", surprise: true },
-      { company: "X", provider: "WORKDAY" },
-      { company: "X", provider: "LEVER", boardIdentifier: "../etc" },
-      { company: "X", provider: "OTHER", boardUrl: "javascript:alert(1)" },
-      { company: "X", provider: "OTHER", interestLevel: 9 },
-      { company: "X", provider: "LEVER" },
+    const b = (board: Record<string, string>) => ({ company: "X", boards: [board] });
+    const bad: Json[] = [
+      { company: "X", surprise: true },
+      { company: "X", boards: "GREENHOUSE" },
+      b({ provider: "WORKDAY", boardIdentifier: "x" }),
+      b({ provider: "LEVER", boardIdentifier: "../etc" }),
+      b({ provider: "OTHER", boardUrl: "javascript:alert(1)" }),
+      b({ provider: "OTHER" }),
+      b({ provider: "LEVER" }),
+      b({ provider: "LEVER", boardIdentifier: "x", boardUrl: "https://jobs.lever.co/x" }),
+      b({ provider: "LEVER", boardIdentifier: "x", extra: "y" }),
       {
         company: "X",
-        provider: "LEVER",
-        boardIdentifier: "x",
-        boardUrl: "https://jobs.lever.co/x",
+        boards: ["a", "b", "c", "d"].map((id) => ({ provider: "ASHBY", boardIdentifier: id })),
       },
-      { provider: "OTHER" },
+      {
+        company: "X",
+        boards: [
+          { provider: "ASHBY", boardIdentifier: "dup" },
+          { provider: "ASHBY", boardIdentifier: "DUP" },
+        ],
+      },
+      { company: "X", interestLevel: 9 },
+      {},
     ];
     for (const command of bad) {
       const { error } = await owner.client.rpc("create_company_watch", {
@@ -264,8 +319,7 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
       const command = {
         requestId,
         company: "Atomic Co",
-        provider: "ASHBY" as const,
-        boardIdentifier: "atomic",
+        boards: [{ provider: "ASHBY" as const, boardIdentifier: "atomic" }],
         interestLevel: 3,
       };
       await expect(owner.services.addWatchedCompany(command, owner.actor)).rejects.toMatchObject({
@@ -365,5 +419,63 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
     expect(last).toMatchObject({ type: "WATCH_UPDATED", actor_type: "CODEX" });
     expect(JSON.stringify(last.metadata)).not.toContain("private note");
     expect((await watches(other.id))[0]).toMatchObject({ version: 1, active: true });
+  });
+
+  it("discovery reads only the owner's job links and watches, on both web and MCP clients", async () => {
+    await other.services.createApplication(
+      {
+        requestId: rid(),
+        company: "Secret Corp",
+        title: "SWE",
+        jobUrl: "https://jobs.lever.co/secret/1",
+      },
+      other.actor,
+    );
+    await owner.services.createApplication(
+      {
+        requestId: rid(),
+        company: "Linear",
+        title: "SWE",
+        jobUrl: "https://jobs.ashbyhq.com/linear/abc",
+      },
+      owner.actor,
+    );
+    const directory = createFixtureBoardDirectory({
+      LEVER: {
+        stripe: {
+          status: "found",
+          boardName: "Stripe",
+          website: null,
+          openJobs: 3,
+          openJobsAtLeast: false,
+          sampleTitles: [],
+        },
+      },
+    });
+    const build = (client: typeof owner.client) =>
+      createTrackerServices({
+        repository: new SupabaseTrackerRepository(client),
+        clock: fixedClock(TODAY),
+        boardDirectory: directory,
+      });
+    for (const [services, actor] of [
+      [build(owner.client), owner.actor],
+      [build(adminClient()), mcpServicesFor(owner.id).actor],
+    ] as const) {
+      const suggestions = await services.suggestWatchesFromApplications(actor);
+      expect(suggestions.map((x) => x.company)).toEqual(["Linear"]);
+      const found = await services.discoverCompanyBoards({ company: "stripe" }, actor);
+      expect(found.companyId).toBe(companyId);
+      expect(found.suggestions.map((x) => [x.provider, x.watchedBy?.company ?? null])).toEqual([
+        ["LEVER", null],
+      ]);
+      const theirs = await services.discoverCompanyBoards({ company: "Secret Corp" }, actor);
+      expect(theirs.companyId).toBeNull();
+      expect(theirs.suggestions).toEqual([]);
+      await expectJwordError(
+        services.discoverCompanyBoards({ companyId: otherCompanyId }, actor),
+        "NOT_FOUND",
+      );
+    }
   });
 });

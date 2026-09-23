@@ -302,39 +302,78 @@ export type Database = {
           },
         ]
       }
+      company_watch_boards: {
+        Row: {
+          board_identifier: string | null
+          board_url: string
+          created_at: string
+          id: string
+          position: number
+          provider: Database["public"]["Enums"]["ats_provider"]
+          user_id: string
+          watch_id: string
+        }
+        Insert: {
+          board_identifier?: string | null
+          board_url: string
+          created_at?: string
+          id?: string
+          position: number
+          provider: Database["public"]["Enums"]["ats_provider"]
+          user_id: string
+          watch_id: string
+        }
+        Update: {
+          board_identifier?: string | null
+          board_url?: string
+          created_at?: string
+          id?: string
+          position?: number
+          provider?: Database["public"]["Enums"]["ats_provider"]
+          user_id?: string
+          watch_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_watch_boards_watch_owner_fkey"
+            columns: ["user_id", "watch_id"]
+            isOneToOne: false
+            referencedRelation: "company_watch_overview"
+            referencedColumns: ["user_id", "watch_id"]
+          },
+          {
+            foreignKeyName: "company_watch_boards_watch_owner_fkey"
+            columns: ["user_id", "watch_id"]
+            isOneToOne: false
+            referencedRelation: "company_watches"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
       company_watches: {
         Row: {
           active: boolean
-          board_identifier: string | null
-          board_url: string | null
           company_id: string
           created_at: string
           id: string
-          provider: Database["public"]["Enums"]["ats_provider"]
           updated_at: string
           user_id: string
           version: number
         }
         Insert: {
           active?: boolean
-          board_identifier?: string | null
-          board_url?: string | null
           company_id: string
           created_at?: string
           id?: string
-          provider: Database["public"]["Enums"]["ats_provider"]
           updated_at?: string
           user_id: string
           version?: number
         }
         Update: {
           active?: boolean
-          board_identifier?: string | null
-          board_url?: string | null
           company_id?: string
           created_at?: string
           id?: string
-          provider?: Database["public"]["Enums"]["ats_provider"]
           updated_at?: string
           user_id?: string
           version?: number
@@ -481,8 +520,8 @@ export type Database = {
         Row: {
           active: boolean | null
           application_count: number | null
-          board_identifier: string | null
-          board_url: string | null
+          board_providers: Database["public"]["Enums"]["ats_provider"][] | null
+          boards: Json | null
           company_id: string | null
           company_name: string | null
           company_normalized_name: string | null
@@ -497,7 +536,6 @@ export type Database = {
           last_event_type:
             | Database["public"]["Enums"]["watch_event_type"]
             | null
-          provider: Database["public"]["Enums"]["ats_provider"] | null
           updated_at: string | null
           user_id: string | null
           version: number | null

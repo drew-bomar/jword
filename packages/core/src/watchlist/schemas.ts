@@ -41,55 +41,86 @@ export const interestLevelSchema = z
   .min(1, "Interest is 1 to 5.")
   .max(5, "Interest is 1 to 5.");
 
-/** Fields shared by add and update: board configuration and the reused company fields. */
-const watchFields = {
-  boardIdentifier: optionalBoardIdentifier,
-  /** Careers page for OTHER only; supported providers derive their board URL. */
-  boardUrl: optionalUrl,
+export const MAX_BOARDS_PER_WATCH = 3;
+
+/**
+ * One board: a supported provider with its identifier (the URL is derived), or OTHER with a
+ * careers page URL. Mirrored by jword.normalize_boards() and the company_watch_boards checks.
+ */
+export const boardInputSchema = z
+  .strictObject({
+    provider: atsProviderSchema,
+    boardIdentifier: optionalBoardIdentifier,
+    /** Careers page for OTHER only; supported providers derive their board URL. */
+    boardUrl: optionalUrl,
+  })
+  .superRefine((board, ctx) => {
+    if (board.provider === "OTHER") {
+      if (board.boardIdentifier) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["boardIdentifier"],
+          message:
+            "Other has no board identifier. Choose Greenhouse, Lever, or Ashby, or clear it.",
+        });
+      }
+      if (!board.boardUrl) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["boardUrl"],
+          message: "Enter the careers page URL.",
+        });
+      }
+      return;
+    }
+    if (!board.boardIdentifier) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["boardIdentifier"],
+        message: `Enter the ${ATS_PROVIDER_LABELS[board.provider]} board identifier.`,
+      });
+    }
+    if (board.boardUrl) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["boardUrl"],
+        message: "The board URL is set from the provider and identifier.",
+      });
+    }
+  });
+export type BoardInput = z.infer<typeof boardInputSchema>;
+
+/** Stable identity of a board: provider + identifier (any case), or a careers URL. */
+export function boardKey(board: {
+  provider: AtsProvider;
+  boardIdentifier?: string | null;
+  boardUrl?: string | null;
+}): string {
+  return board.boardIdentifier
+    ? `${board.provider}:${board.boardIdentifier.toLowerCase()}`
+    : `URL:${(board.boardUrl ?? "").toLowerCase()}`;
+}
+
+export const boardsSchema = z
+  .array(boardInputSchema)
+  .max(MAX_BOARDS_PER_WATCH, `A company can have at most ${MAX_BOARDS_PER_WATCH} boards.`)
+  .superRefine((boards, ctx) => {
+    const seen = new Set<string>();
+    boards.forEach((board, index) => {
+      const key = boardKey(board);
+      if (seen.has(key)) {
+        ctx.addIssue({ code: "custom", path: [index], message: "The same board is listed twice." });
+      }
+      seen.add(key);
+    });
+  });
+
+/** The reused company fields. */
+const companyFields = {
   interestLevel: interestLevelSchema.nullable().optional(),
   websiteUrl: optionalUrl,
   companyNotes: optionalText(5000),
 };
-
-interface BoardShape {
-  provider?: AtsProvider;
-  boardIdentifier?: string | null;
-  boardUrl?: string | null;
-}
-
-/**
- * Board rules checkable from the command alone. `complete` means the command carries the whole
- * board configuration (creation). The database checks the final state again, including values
- * an update did not touch.
- */
-function checkBoardShape(value: BoardShape, ctx: z.RefinementCtx, complete: boolean) {
-  const { provider, boardIdentifier, boardUrl } = value;
-  if (!provider) return;
-  if (provider === "OTHER") {
-    if (boardIdentifier) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["boardIdentifier"],
-        message: "Other has no board identifier. Choose Greenhouse, Lever, or Ashby, or clear it.",
-      });
-    }
-    return;
-  }
-  if (complete ? !boardIdentifier : boardIdentifier === null) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["boardIdentifier"],
-      message: `Enter the ${ATS_PROVIDER_LABELS[provider]} board identifier.`,
-    });
-  }
-  if (boardUrl) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["boardUrl"],
-      message: "The board URL is set from the provider and identifier.",
-    });
-  }
-}
 
 export const addWatchedCompanySchema = z
   .strictObject({
@@ -98,21 +129,19 @@ export const addWatchedCompanySchema = z
     company: requiredText(200, "Company").optional(),
     /** Explicitly selected existing company; wins over the name and must belong to the owner. */
     companyId: uuidSchema.optional(),
-    provider: atsProviderSchema,
-    ...watchFields,
+    /** Zero to three boards. A watch without boards is still watched, with nothing to read yet. */
+    boards: boardsSchema.optional(),
+    ...companyFields,
   })
   .superRefine((value, ctx) => {
     if (!value.company && !value.companyId) {
       ctx.addIssue({ code: "custom", path: ["company"], message: "Company is required." });
     }
-    checkBoardShape(value, ctx, true);
   });
 export type AddWatchedCompanyCommand = z.infer<typeof addWatchedCompanySchema>;
 
 export const EDITABLE_WATCH_FIELDS = [
-  "provider",
-  "boardIdentifier",
-  "boardUrl",
+  "boards",
   "interestLevel",
   "websiteUrl",
   "companyNotes",
@@ -124,14 +153,14 @@ export const updateWatchedCompanySchema = z
     requestId: requestIdSchema,
     watchId: uuidSchema,
     expectedVersion: versionSchema,
-    provider: atsProviderSchema.optional(),
-    ...watchFields,
+    /** Replaces the whole board set (0-3), in order. */
+    boards: boardsSchema.optional(),
+    ...companyFields,
   })
   .superRefine((value, ctx) => {
     if (!EDITABLE_WATCH_FIELDS.some((field) => value[field] !== undefined)) {
       ctx.addIssue({ code: "custom", message: "Supply at least one field to update." });
     }
-    checkBoardShape(value, ctx, false);
   });
 export type UpdateWatchedCompanyCommand = z.infer<typeof updateWatchedCompanySchema>;
 
@@ -163,3 +192,19 @@ export const searchCompaniesSchema = z.strictObject({
   limit: z.number().int().min(1).max(COMPANY_OPTIONS_MAX_LIMIT).optional(),
 });
 export type SearchCompaniesInput = z.infer<typeof searchCompaniesSchema>;
+
+export const discoverBoardsSchema = z
+  .strictObject({
+    /** Company name to look up; used when no companyId is given. */
+    company: requiredText(200, "Company").optional(),
+    /** Existing company: its saved applications and website add evidence. */
+    companyId: uuidSchema.optional(),
+    /** Company website, for one more board-name guess and a domain check. */
+    websiteUrl: optionalUrl,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.company && !value.companyId) {
+      ctx.addIssue({ code: "custom", path: ["company"], message: "Company is required." });
+    }
+  });
+export type DiscoverBoardsInput = z.infer<typeof discoverBoardsSchema>;
