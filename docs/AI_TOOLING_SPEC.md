@@ -53,7 +53,7 @@ Codex must never receive a tool that can run arbitrary SQL or mutate arbitrary f
 
 ## Implementation notes (2026-09-21)
 
-Implemented in `packages/mcp-server/src/tools.ts`. Input schemas are `z.strictObject` and the SDK validates them before the handler runs, so unknown fields are rejected at the protocol level. `update_application_details` exposes only the allowlist below even though the shared service and database function accept a broader set for the web form (title, company, external id, description). The server also publishes protocol instructions (search first, ask on ambiguity, re-read on STALE_VERSION). Registration steps are in [MCP_SETUP.md](MCP_SETUP.md).
+Implemented in `packages/mcp-server/src/tools.ts` (and `watchlist-tools.ts` for the five watchlist tools added in decision 018). Input schemas are `z.strictObject` and the SDK validates them before the handler runs, so unknown fields are rejected at the protocol level. `update_application_details` exposes only the allowlist below even though the shared service and database function accept a broader set for the web form (title, company, external id, description). The server also publishes protocol instructions (search first, ask on ambiguity, re-read on STALE_VERSION). Registration steps are in [MCP_SETUP.md](MCP_SETUP.md).
 
 ## Tool catalog
 
@@ -233,6 +233,29 @@ Activity responses include `hasMore` and `nextCursor` with stable ordering. Retu
 ### `get_pipeline_summary` (read-only)
 
 Returns counts by status and a short list of stale active applications. This is deterministic database aggregation, not model analytics.
+
+### Company watchlist tools (decision 018)
+
+Five bounded tools in `packages/mcp-server/src/watchlist-tools.ts`, backed by the same
+watchlist services as the web page. None fetches jobs.
+
+- `list_watched_companies` (read-only): `{ text?, active?, provider?, limit? (default 10, max 25), cursor? }`.
+  Items: `watchId`, `companyId`, `company`, `provider`, `boardIdentifier`, `boardUrl`, `active`,
+  `version`, `interestLevel`, `applicationCount`, with `hasMore` / `nextCursor`. No notes.
+- `get_watched_company` (read-only): `{ watchId }`. The watch with company website and notes
+  (user data), plus recent audit entries.
+- `add_watched_company`: `{ requestId, company? | companyId?, provider, boardIdentifier?, boardUrl? (OTHER only), interestLevel?, websiteUrl?, companyNotes? }`.
+  Returns the new `watchId` and `companyCreated`. An existing watch (active or inactive) is
+  `CONFLICT` / `ALREADY_WATCHED` with `watchId` and `watchActive`; the same board under another
+  company is `CONFLICT` / `BOARD_ALREADY_WATCHED`.
+- `update_watched_company`: `{ requestId, watchId, expectedVersion, provider?, boardIdentifier?, boardUrl?, interestLevel?, websiteUrl?, companyNotes? }`.
+  At least one field; identical values are a no-op.
+- `set_company_watch_status`: `{ requestId, watchId, expectedVersion, active }`. Deactivation
+  is the only "remove"; nothing is deleted.
+
+Watch mutation results use the shape below with `watchId`, `companyId`, `company`, and `active`
+in place of `applicationId`. `before` / `after` hold only scalar fields; company-notes text is
+reported only as a changed field name.
 
 ## Mutation result contract
 

@@ -24,6 +24,12 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - activity timeline
 - basic stage counts
 
+### Company watchlist (decision 018)
+
+- a Watchlist page to add, edit, deactivate, and reactivate watched companies with Greenhouse, Lever, Ashby, or Other board configuration
+- configuration only: no job fetching, storage, scheduling, or ranking
+- matching MCP tools through the same shared services
+
 ### Migration
 
 - CSV upload, column mapping, validation preview, duplicate warnings, confirmation, and result summary
@@ -50,7 +56,7 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - OpenAI, Anthropic, or other paid model API calls
 - user-supplied API keys
 - personalized job recommendations
-- automatic job discovery or scraping
+- automatic job discovery or scraping (a company **watchlist** that records which public boards to monitor later was added in [decision 018](decisions/018-company-watchlist.md); fetching postings, scheduling, Leads, and ranking remain out of scope)
 - automated job submission
 - Chrome/browser autofill extension (a capture-only extension that reads postings into jword was added in [decision 016](decisions/016-browser-extension-capture.md) and moved into an in-page panel in [decision 017](decisions/017-extension-overlay-capture-api.md); filling application forms remains out of scope)
 - resume generation or tailoring

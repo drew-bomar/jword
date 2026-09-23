@@ -2,6 +2,32 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Company watchlist (JWO-16, 2026-09-22)
+
+[Decision 018](decisions/018-company-watchlist.md). Branch `claude/jwo-16-company-watchlist`.
+The owner can list, search, filter, add, edit, deactivate, and reactivate watched companies at
+`/watchlist`. Each watch records a Greenhouse, Lever, Ashby, or Other board configuration. It is
+configuration only: nothing fetches, stores, schedules, or ranks postings. The 90-minute study
+guide is [WATCHLIST_ARCHITECTURE_WALKTHROUGH.md](WATCHLIST_ARCHITECTURE_WALKTHROUGH.md).
+
+Runtime path: `WatchForm` → `addWatchAction` (`requireSession`) → `addWatchedCompany` (Zod) →
+`SupabaseTrackerRepository.createWatch` → `public.create_company_watch` → `jword.create_company_watch`
+(company match-or-create, watch row, audit row, receipt in one transaction). MCP tools call the
+same services with actor `CODEX`.
+
+Hosted step (owner): migration `20260922000100_company_watchlist.sql` was applied only to the
+local stack. Apply it to hosted with `pnpm exec supabase db push` (the repo is already linked),
+then deploy. The page errors until the migration exists on hosted.
+
+Verification (local stack): `pnpm check` (197 unit tests), `pnpm test:integration` (39),
+`pnpm test:e2e` (34 passed, 14 intentional desktop/mobile skips), `pnpm mcp:build`,
+`JWORD_E2E=1 pnpm build --webpack`, and a stdio smoke of the built MCP server (14 tools, add +
+list, CODEX audit). No hosted data was touched and no external service was called.
+
+Found while testing: the tracker's Edit details dialog cannot be reopened after a save until the
+page reloads (its busy flag stays set when the form unmounts). The watchlist dialogs reset it;
+the tracker fix is a separate one-line change.
+
 ## In-page capture overlay (2026-09-22)
 
 [Decision 017](decisions/017-extension-overlay-capture-api.md) replaces the side panel below with a

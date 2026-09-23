@@ -57,6 +57,24 @@ NOTE_UPDATED
 IMPORTED
 ```
 
+### `ats_provider` (decision 018)
+
+```text
+GREENHOUSE
+LEVER
+ASHBY
+OTHER
+```
+
+### `watch_event_type` (decision 018)
+
+```text
+WATCH_CREATED
+WATCH_UPDATED
+WATCH_ACTIVATED
+WATCH_DEACTIVATED
+```
+
 ### `actor_type`
 
 ```text
@@ -223,6 +241,45 @@ Primary key: `(user_id, request_id)`. Enable RLS and keep receipts internal to t
 
 Included in the MVP at the owner's request on 2026-09-21 ([decision 014](decisions/014-mvp-implementation-deviations.md)). One row per user, primary key `user_id`; columns `full_name`, `email`, `phone`, `location`, `linkedin_url`, `github_url`, `portfolio_url`, `school`, `degree`, `graduation_date` (date), `work_authorization`, `requires_sponsorship` (nullable boolean), timestamps. Owner-only RLS select; writes only through `public.save_candidate_profile(p_owner_id, p_command)`. No activity timeline and no MCP tool.
 
+### `company_watches` (decision 018)
+
+Which companies' public job boards jword should monitor later. Configuration only.
+
+| Column             | Type         | Notes                                                                                          |
+| ------------------ | ------------ | ---------------------------------------------------------------------------------------------- |
+| `id`               | uuid         | primary key                                                                                    |
+| `user_id`          | uuid         | owner                                                                                          |
+| `company_id`       | uuid         | required; composite FK `(user_id, company_id)` to companies `(user_id, id)` on delete restrict |
+| `active`           | boolean      | default true; "remove from watchlist" sets false                                               |
+| `provider`         | ats_provider | required                                                                                       |
+| `board_identifier` | text         | Greenhouse token / Lever slug / Ashby name; required for supported providers, null for OTHER   |
+| `board_url`        | text         | derived canonical board URL for supported providers; optional careers page for OTHER           |
+| `version`          | integer      | default 1; decision 008 conflict checks                                                        |
+| `created_at`       | timestamptz  | default now                                                                                    |
+| `updated_at`       | timestamptz  | default now                                                                                    |
+
+Constraints/indexes: unique `(user_id, company_id)`; unique `(user_id, id)`; unique
+`(user_id, provider, lower(board_identifier))` where the identifier is not null; index
+`(user_id, active)`; check `company_watches_board_shape` (identifier pattern
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$` and `board_url` equal to the canonical URL for supported
+providers, identifier null for OTHER); check that `board_url` is http(s).
+
+No collection columns (last checked, error count, schedule); those belong to the collection
+ticket. `companies.target_company` is left unused; an active watch is the signal.
+
+### `company_watch_activities` (decision 018)
+
+Append-only audit for watch mutations, the watchlist's counterpart of `application_activities`.
+Columns: `id`, `user_id`, `watch_id` (composite FK `(user_id, watch_id)` to company_watches, on
+delete cascade like application activities), `type watch_event_type`, `actor_type`, `summary`,
+`metadata jsonb` (changed field names; before/after for scalar fields; never company-notes text),
+`occurred_at`, `created_at`. Index `(user_id, watch_id, occurred_at desc)`.
+
+### `company_watch_overview` view
+
+`security_invoker = true` read model joining a watch with its company (name, website, interest,
+notes), an application count, and the latest audit entry.
+
 ## RLS and write permissions
 
 Approved in [decision 010](decisions/010-function-only-web-writes.md): authenticated web users can read their own tracker rows and execute approved mutation functions, but cannot directly insert, update, or delete table rows. Internal request receipts are accessed through the mutation functions, not a browser table API.
@@ -253,14 +310,17 @@ The MCP service-role path bypasses RLS, so service-layer owner checks and reposi
 
 All public wrappers are `security definer` with `search_path = ''`, callable by `authenticated` and `service_role` only, and delegate to helpers in the private `jword` schema:
 
-| Function                                                                    | Purpose                                                                                                                     |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `create_application(p_owner_id, p_actor, p_request_id, p_command, p_today)` | company match-or-create, job, application, optional initial note, CREATED activity; duplicate check unless `allowDuplicate` |
-| `update_application_status(...)`                                            | status and/or applied date; STATUS_CHANGED or DETAILS_UPDATED; no-op when unchanged                                         |
-| `update_application_details(...)`                                           | allowlisted application and job fields incl. company relink; DETAILS_UPDATED with before/after                              |
-| `add_application_note(...)` / `update_application_note(...)`                | add or replace note text; NOTE_ADDED / NOTE_UPDATED (decision 015)                                                          |
-| `import_applications(p_owner_id, p_actor, p_request_id, p_command)`         | all-or-nothing batch of up to 500 rows; no `p_today` because imports never receive date defaults                            |
-| `save_candidate_profile(p_owner_id, p_command)`                             | upsert of the profile row                                                                                                   |
+| Function                                                                    | Purpose                                                                                                                             |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `create_application(p_owner_id, p_actor, p_request_id, p_command, p_today)` | company match-or-create, job, application, optional initial note, CREATED activity; duplicate check unless `allowDuplicate`         |
+| `update_application_status(...)`                                            | status and/or applied date; STATUS_CHANGED or DETAILS_UPDATED; no-op when unchanged                                                 |
+| `update_application_details(...)`                                           | allowlisted application and job fields incl. company relink; DETAILS_UPDATED with before/after                                      |
+| `add_application_note(...)` / `update_application_note(...)`                | add or replace note text; NOTE_ADDED / NOTE_UPDATED (decision 015)                                                                  |
+| `import_applications(p_owner_id, p_actor, p_request_id, p_command)`         | all-or-nothing batch of up to 500 rows; no `p_today` because imports never receive date defaults                                    |
+| `save_candidate_profile(p_owner_id, p_command)`                             | upsert of the profile row                                                                                                           |
+| `create_company_watch(p_owner_id, p_actor, p_request_id, p_command)`        | company match-or-create or owned `companyId`, watch row, WATCH_CREATED audit; `ALREADY_WATCHED` / `BOARD_ALREADY_WATCHED` conflicts |
+| `update_company_watch(...)`                                                 | allowlisted board and company fields with `expectedVersion`; WATCH_UPDATED; no-op when unchanged                                    |
+| `set_company_watch_active(...)`                                             | deactivate/reactivate with `expectedVersion`; WATCH_DEACTIVATED / WATCH_ACTIVATED; no-op when unchanged                             |
 
 Owner resolution: with a session, `auth.uid()` wins and a mismatching `p_owner_id` is `FORBIDDEN`; without a session only `service_role` may pass an explicit owner. Errors use SQLSTATEs `JW401/JW403/JW404/JW409/JW422/JW42I`, with the reason in `HINT` and JSON in `DETAIL`; `packages/core/src/repositories/errors.ts` maps them to typed errors.
 
@@ -351,3 +411,13 @@ The normalized-name unique constraint serializes concurrent creation of the same
 The public RPC signatures remain unchanged. Strict wrappers validate object shape, allowed keys, required fields, JSON types, text lengths, HTTP(S) URLs, enums, UUIDs, dates, and import rows before calling the private implementation. Rejected batches create neither rows nor receipts. Shared schemas provide the same checks before normal web/MCP calls. Text-only note edits accept up to 10,000 characters, matching the import limit so an imported note remains editable.
 
 The profile exception from decision 014 remains a simple upsert without an application activity timeline or version. Tracker mutations retain their original atomic activity/version/receipt guarantees.
+
+## Company watchlist (migration 20260922000100)
+
+`company_watches`, `company_watch_activities`, and `company_watch_overview` follow the same
+contract as the tracker: owner-only RLS select for `authenticated`, no table write grants for
+`anon` or `authenticated`, and writes only through the three security-definer wrappers above.
+The wrappers validate raw input with `jword.validate_watch_command` (a spec-driven copy of the
+migration 005 rules) before the private implementations run. Every write commits the watch row,
+any company-field change, one audit row, the version bump, and the `mutation_requests` receipt
+in one transaction. See [decision 018](decisions/018-company-watchlist.md).

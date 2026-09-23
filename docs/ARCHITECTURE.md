@@ -7,7 +7,7 @@ Implemented as described below. Concrete locations:
 | Layer            | Where                                                                                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)                                                                           |
-| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                                                           |
+| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `watchlist-tools.ts` (5 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                           |
 | Posting capture  | `packages/extension` (Chrome extension: reads postings, in-page overlay), `src/app/api/extension/*` + `src/server/extension-api.ts` (capture API), `src/features/capture` (review UI), `packages/core/src/capture` |
 | Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                                                                                    |
 | Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                                                                                    |
@@ -337,3 +337,43 @@ flowchart LR
 - `src/server/extension-origin.ts` / `extension-api.ts`: the Origin check (the extension id is
   pinned by the manifest `key` and configured as `JWORD_EXTENSION_ID`), then `requireSession`, then
   the handler. `src/proxy.ts` answers these paths with the handler's 401 rather than a redirect.
+
+## Company watchlist (2026-09-22)
+
+Approved in [decision 018](decisions/018-company-watchlist.md) as step 1 of the discovery
+roadmap. The owner records which companies' public Greenhouse, Lever, or Ashby boards jword
+should monitor. It is configuration only: no postings are fetched or stored, and nothing is
+scheduled.
+
+```mermaid
+flowchart LR
+    W["/watchlist (client form)"] --> A["Server Action: requireSession + owner lock"]
+    C["Coding agent"] --> T["MCP watchlist tools (actor CODEX)"]
+    A --> S["createWatchlistServices (Zod)"]
+    T --> S
+    S --> R["Repository (owner-scoped)"]
+    R --> F["create/update_company_watch, set_company_watch_active"]
+    F --> DB["watch row + company fields + audit row + version + receipt"]
+```
+
+| Layer          | Where                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| Page and UI    | `src/app/watchlist/page.tsx`, `src/features/watchlist/*`                                 |
+| Server Actions | `src/server/actions/watchlist.ts`                                                        |
+| Pure rules     | `packages/core/src/watchlist/boards.ts` (URL inference), `schemas.ts`, `types.ts`        |
+| Service        | `packages/core/src/services/watchlist.ts`, spread into `createTrackerServices`           |
+| Repository     | `WatchlistRepository` in `repositories/types.ts`; Supabase and in-memory implementations |
+| MCP            | `packages/mcp-server/src/watchlist-tools.ts`                                             |
+| Database       | `supabase/migrations/20260922000100_company_watchlist.sql`                               |
+
+- A watch belongs to one company (`company_watches`, composite owner FK, one watch per company,
+  one board per owner). Interest level, website, and notes stay on `companies` and are edited
+  through the watch functions.
+- Supported providers derive their board URL from the identifier. `OTHER` keeps an optional
+  careers URL. The UI pre-fills from a pasted URL with a pure function; the server validates
+  the final values again.
+- Every write is atomic with a `company_watch_activities` row and a retry receipt. Updates and
+  status changes use `expectedVersion`. "Remove" means deactivate; there is no delete.
+- Future seam: a per-provider `BoardAdapter.listPostings(board)` in core, called by a later
+  "Verify board" action and by collection. Collection state lives in the collection ticket's
+  own table.

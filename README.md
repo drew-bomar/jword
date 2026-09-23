@@ -39,7 +39,7 @@ See `docs/ARCHITECTURE.md`, `docs/DATABASE_SCHEMA.md`, `docs/AI_TOOLING_SPEC.md`
 
 ```
 src/                     Next.js app (pages, Server Actions, auth plumbing, UI components)
-  app/                   routes: /, /applications/new, /applications/[id], /import, /settings/profile, /sign-in
+  app/                   routes: /, /applications/new, /applications/[id], /watchlist, /import, /settings/profile, /sign-in
   server/actions/        Server Actions: authenticate → validate → shared service → safe result
   server/auth/           requireSession(): verifies the Supabase session, builds the actor context
   features/              UI for applications, import, profile, auth

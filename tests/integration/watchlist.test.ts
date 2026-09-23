@@ -93,7 +93,9 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
       "company_watch_activities",
       "company_watch_overview",
     ] as const) {
-      const { error } = await anon.from(table).select("*");
+      const { error } = await (anon.from as (name: string) => ReturnType<typeof anon.from>)(
+        table,
+      ).select("*");
       expect(error?.code, table).toBe("42501");
     }
     for (const fn of [
@@ -206,7 +208,7 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
   it("direct RPC input is validated before anything is written", async () => {
     const receiptsBefore = (await db.receipts(owner.id)).length;
     const companiesBefore = (await db.companies(owner.id)).length;
-    const bad: Array<Record<string, unknown>> = [
+    const bad: Array<Record<string, string | number | boolean>> = [
       { company: "X", provider: "OTHER", surprise: true },
       { company: "X", provider: "WORKDAY" },
       { company: "X", provider: "LEVER", boardIdentifier: "../etc" },

@@ -35,6 +35,33 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
 12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
     signed-in user to `/forbidden` with a sign-out button.
 
+## Company watchlist (decision 018)
+
+1. **Open.** Click Watchlist in the header → the empty state explains that nothing is fetched.
+2. **Add from a URL.** Add company → paste `https://job-boards.greenhouse.io/stripe/jobs/123?gh_jid=123`
+   → "Detected Greenhouse board “stripe”", Board identifier `stripe`, and the board URL preview.
+   Type Company "Stripe", choose Interest 4 → Add to watchlist → the row shows Greenhouse,
+   `stripe` (linking to the board), Active, 4/5, and "Started watching Stripe (Greenhouse) · You".
+3. **Other provider.** Add company → paste a careers page such as `https://careers.datadoghq.com/`
+   → the provider becomes Other with that careers URL. Start typing an existing company name and
+   pick it from "Existing companies" → "(existing company)". Save → the row links to "N applications".
+4. **Edit.** Edit Stripe → Interest 5, add company notes → Save → 5/5 and "Updated watch for Stripe".
+5. **Stale edit.** Open /watchlist in two tabs. In tab B open Edit Stripe and type a website. In
+   tab A click Deactivate. Save in tab B → "This watch changed since you opened it"; the draft
+   stays. Refresh latest values → Reapply my edits → Save.
+6. **Deactivate/reactivate.** Deactivate shows Inactive (icon + word) and "Stopped watching";
+   the company's applications are unchanged. Reactivate shows Active and "Resumed watching".
+7. **Duplicate.** With Stripe inactive, Add company "stripe" again → "Stripe is already on your
+   watchlist (inactive). Nothing was added." → Reactivate it → the same row becomes Active; no
+   second row appears.
+8. **Filters.** Search "str", Monitoring Inactive/Active, Provider Lever → matching rows or the
+   "No matching companies" state with Clear filters.
+9. **Phone width.** Below 768px the rows become cards and the header still fits without sideways
+   scrolling.
+10. **MCP.** Ask the agent "What companies am I watching?" (`list_watched_companies`), then
+    "Stop watching Stripe" → `set_company_watch_status` with the watch's `watchId` and version;
+    the web row shows "Stopped watching Stripe · Coding agent".
+
 ## Browser extension capture
 
 Build and load it first (`pnpm ext:build`, then Load unpacked `packages/extension/dist`; see
