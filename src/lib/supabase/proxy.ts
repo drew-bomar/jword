@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "@/lib/env";
 
 const PUBLIC_PATHS = ["/sign-in", "/auth/callback"];
+/** JSON endpoints answer a signed-out caller with 401 themselves instead of a sign-in redirect. */
+const API_PATHS = ["/api/extension/"];
 
 /** Refreshes the auth cookie on every request and redirects signed-out visitors. */
 export async function updateSession(request: NextRequest) {
@@ -29,10 +31,13 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
-  if (!user && !isPublic) {
+  const isApi = API_PATHS.some((path) => pathname.startsWith(path));
+  if (!user && !isPublic && !isApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
-    url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
+    // Keep the query so the page the owner asked for survives sign-in.
+    const target = pathname + request.nextUrl.search;
+    url.search = target === "/" ? "" : `?next=${encodeURIComponent(target)}`;
     return NextResponse.redirect(url);
   }
   if (user && pathname === "/sign-in") {

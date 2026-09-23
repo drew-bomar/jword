@@ -8,7 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requestSignInCode, verifySignInCode } from "@/server/actions/auth";
 
-export function SignInForm({ initialError }: { initialError: string | null }) {
+/** Only same-site paths are accepted as a post-sign-in destination. */
+function safeNext(next: string | null): string {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+export function SignInForm({
+  initialError,
+  next = null,
+}: {
+  initialError: string | null;
+  /** Where to go after signing in: the page the owner originally asked for. */
+  next?: string | null;
+}) {
   const router = useRouter();
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -38,7 +50,7 @@ export function SignInForm({ initialError }: { initialError: string | null }) {
         setError(result.error.message);
         return;
       }
-      router.replace("/");
+      router.replace(safeNext(next));
       router.refresh();
     });
   }

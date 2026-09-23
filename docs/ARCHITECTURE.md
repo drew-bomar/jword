@@ -4,15 +4,16 @@
 
 Implemented as described below. Concrete locations:
 
-| Layer            | Where                                                                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)          |
-| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                          |
-| Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                   |
-| Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                   |
-| Repositories     | `packages/core/src/repositories/supabase.ts` (owner-scoped queries + RPC), `types.ts` (contract), `testing/fake-repository.ts` (in-memory double) |
-| Database         | `supabase/migrations/20260921000100_schema.sql`, `..._mutation_functions.sql`, `..._candidate_profiles.sql`                                       |
-| Import pipeline  | `packages/core/src/import/*` (parse, map, validate, duplicates)                                                                                   |
+| Layer            | Where                                                                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)                                                                           |
+| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                                                           |
+| Posting capture  | `packages/extension` (Chrome extension: reads postings, in-page overlay), `src/app/api/extension/*` + `src/server/extension-api.ts` (capture API), `src/features/capture` (review UI), `packages/core/src/capture` |
+| Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                                                                                    |
+| Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                                                                                    |
+| Repositories     | `packages/core/src/repositories/supabase.ts` (owner-scoped queries + RPC), `types.ts` (contract), `testing/fake-repository.ts` (in-memory double)                                                                  |
+| Database         | `supabase/migrations/20260921000100_schema.sql`, `..._mutation_functions.sql`, `..._candidate_profiles.sql`                                                                                                        |
+| Import pipeline  | `packages/core/src/import/*` (parse, map, validate, duplicates)                                                                                                                                                    |
 
 Deviations from the original plan are recorded in [decision 014](decisions/014-mvp-implementation-deviations.md): the candidate profile is included at the owner's request, and automated tests run against a local Supabase stack while the hosted project remains the real tracker.
 
@@ -51,7 +52,7 @@ flowchart TD
 
 ### Web server entry points
 
-Use Next.js Server Actions for web mutations. Next.js handles the browser's HTTP POST request and dispatches it to the action; the browser does not execute database code. Each action verifies the caller and passes a validated command to the shared service. Use Server Components for server-rendered reads through the shared service layer. Reserve Route Handlers for explicit HTTP needs such as an authentication callback; do not create a parallel REST mutation API for the tracker. See [decision 005](decisions/005-web-server-actions.md).
+Use Next.js Server Actions for web mutations. Next.js handles the browser's HTTP POST request and dispatches it to the action; the browser does not execute database code. Each action verifies the caller and passes a validated command to the shared service. Use Server Components for server-rendered reads through the shared service layer. Reserve Route Handlers for explicit HTTP needs such as an authentication callback; do not create a parallel REST mutation API for the tracker. See [decision 005](decisions/005-web-server-actions.md). The one exception is the capture extension's five origin-restricted endpoints ([decision 017](decisions/017-extension-overlay-capture-api.md)).
 
 Responsibilities:
 
@@ -185,7 +186,7 @@ Approved on 2026-09-20: keep email sign-in for the hosted tracker and use a priv
 - receives only the Supabase public/anon configuration intended for browsers
 - signs in through an email link or code on computer or phone; the browser retains the authenticated session, subject to expiry or sign-out
 - relies on RLS as a database backstop
-- has no direct table-write permission; web mutations reach the approved database functions through Server Actions, shared services, and repositories, per [decision 010](decisions/010-function-only-web-writes.md)
+- has no direct table-write permission; web mutations reach the approved database functions through Server Actions (or, for the capture extension, the `/api/extension/*` handlers), shared services, and repositories, per [decision 010](decisions/010-function-only-web-writes.md)
 
 ### Next.js server
 
@@ -306,3 +307,33 @@ These choices must preserve the contracts above.
 - `domain/date-policy.ts` defines interactive date policy used by services and the test repository. Status services read current state to evaluate defaults; this read does not replace the database’s locked version check. Caller intent remains unchanged for retry fingerprints.
 - Migration 005 places mutation implementations in the private schema and validates direct RPC inputs before delegating. SQL repeats essential write invariants because callers can bypass TypeScript. Company matching, duplicate detection, receipts, and history stay inside the transaction so concurrent saves cannot bypass them.
 - Browser tests use `.next-e2e` on port 3100 so an existing developer server can remain running.
+
+## Posting capture (2026-09-22)
+
+Approved in [decision 016](decisions/016-browser-extension-capture.md), with the review moved into
+an in-page overlay by [decision 017](decisions/017-extension-overlay-capture-api.md). A Chrome
+extension reads a job posting and draws a review panel in the job tab. The panel is an extension
+page in a closed shadow root, pinned right and pushing the page over. It reaches jword only
+through the extension's background worker. The worker calls five origin-restricted JSON endpoints
+with the owner's normal session cookie. The extension holds no credentials of its own.
+
+```mermaid
+flowchart LR
+    J["Job page"] -->|toolbar click, activeTab| X["Extractor + overlay host"]
+    X -->|iframe, nonce| O["Overlay (extension page)"]
+    O -->|chrome.runtime message| W["Background worker"]
+    W -->|POST /api/extension/*, owner cookie| R["Route Handlers: Origin, session, Zod"]
+    R --> S["Shared services"] --> DB["Database functions"]
+```
+
+- `packages/core/src/capture`: payload schema/normalizer and `planCaptureUpdate`, the rule for which
+  posting fields may be written (blank fields pre-selected, overwrites opt-in; never status,
+  priority, owner dates, company, or title).
+- Creation reuses `createApplication` (duplicate check, `allowDuplicate` only after the owner saw
+  the candidates). Updates reuse `updateApplicationDetails` with `expectedVersion`; a stale version
+  refreshes the current values and keeps the owner's selection. The API's `update-posting` endpoint
+  accepts only posting fields (`capturePostingUpdateSchema`) before the shared service validates
+  the command again.
+- `src/server/extension-origin.ts` / `extension-api.ts`: the Origin check (the extension id is
+  pinned by the manifest `key` and configured as `JWORD_EXTENSION_ID`), then `requireSession`, then
+  the handler. `src/proxy.ts` answers these paths with the handler's 401 rather than a redirect.

@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "jword capture",
+  "version": "0.2.0",
+  "description": "Read the job posting in the current tab into your jword tracker, reviewed in a panel on the page.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoy+YHQqXORQH2PlYOywFSFJvSeKYRH72NL62exd6vLYVOkCDGeBKG7wC0HYANIjfQ43JmRfCvnDaa2Yx2MctTnVj4iHWNB3XrtysugpL/vofM3hD9ot8z5MK9KFXprd28czrq9gGFenBwCwqd+F3nqVqjz3Dah+3VKAW8MSFA9BrIyG2WlAvD1viLowgv20hz3WTGumusj5i6qYMdSiiFqf7qXlARfnx2A60qWFJ4YszX9FF6aBDtLF4yYDzubahITTQ9Z0KO3JLXME6VaHj9SwGHsMYlC+vVKgyDjvQufKXmiGI3n5ual8XDzg2CSCt35wnGz2xeFqgWKchrdLx1QIDAQAB",
+  "action": {
+    "default_title": "Capture this job in jword"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "optional_host_permissions": ["https://*/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["overlay.html", "overlay.js", "overlay.css"],
+      "matches": ["http://*/*", "https://*/*"],
+      "use_dynamic_url": true
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+J"
+      },
+      "description": "Capture this job in jword"
+    }
+  }
+}

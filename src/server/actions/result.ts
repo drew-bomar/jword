@@ -12,7 +12,10 @@ export interface ActionError {
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: ActionError };
 
 /** Translate typed errors into a serializable, UI-safe result. Never leaks raw errors. */
-export async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
+export async function runAction<T>(
+  fn: () => Promise<T>,
+  where = "server-action",
+): Promise<ActionResult<T>> {
   try {
     return { ok: true, data: await fn() };
   } catch (error) {
@@ -21,7 +24,7 @@ export async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T
       console.error(
         JSON.stringify({
           level: "error",
-          where: "server-action",
+          where,
           code: typed.code,
         }),
       );
