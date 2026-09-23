@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>jword capture options</title>
+    <style>
+      body {
+        font:
+          14px system-ui,
+          sans-serif;
+        margin: 16px;
+        min-width: 360px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+      }
+      button {
+        margin-top: 8px;
+        padding: 6px 12px;
+      }
+      p {
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <form>
+      <label for="jword-url">jword address</label>
+      <input id="jword-url" type="url" placeholder="http://localhost:3200" required />
+      <p>
+        Local development uses http://localhost:3200. For the hosted tracker, enter its https
+        address.
+      </p>
+      <button type="submit">Save</button>
+      <p id="status" role="status"></p>
+    </form>
+    <script src="options.js"></script>
+  </body>
+</html>

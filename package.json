@@ -26,6 +26,7 @@
     "db:types": "supabase gen types typescript --local --schema public > packages/core/src/db/database.types.ts && prettier --write packages/core/src/db/database.types.ts",
     "mcp:build": "pnpm --filter @jword/mcp-server build",
     "mcp:start": "node packages/mcp-server/dist/index.js",
+    "ext:build": "pnpm --filter @jword/extension build",
     "owner:create": "tsx scripts/create-owner.ts"
   },
   "dependencies": {

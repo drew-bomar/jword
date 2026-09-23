@@ -35,6 +35,26 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
 12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
     signed-in user to `/forbidden` with a sign-out button.
 
+## Browser extension capture
+
+Build and load it first (`pnpm ext:build`, then Load unpacked `packages/extension/dist`; see
+`packages/extension/README.md`).
+
+1. **New posting.** On a Greenhouse, Lever, or Ashby posting, click the jword button → the side panel opens and
+   shows company, role, location, and description filled in and "No matching applications found."
+   → Add application → Open application: the detail page shows the fields, a collapsible Job
+   description, and a "Created" activity.
+2. **Match.** Capture the same posting again → it offers "Update … — …" and does not pre-select it;
+   choose it → blank fields are ticked, fields that would replace a value are not → Update →
+   "Details updated" in Activity; unticked values are unchanged.
+3. **LinkedIn.** On a LinkedIn job, scroll to "About the job", then capture → company, role,
+   location, and workplace are filled; the description is filled when it had loaded.
+4. **Workday.** The company is flagged as guessed; correct it if needed before saving.
+5. **Signed out.** Sign out, capture → the panel offers "Sign in in a new tab"; sign in there, then
+   click "I've signed in" in the panel → the posting is still filled in.
+6. **Status.** New captures default to Applied, with date applied set to today.
+7. **Without the extension.** Open `/capture` directly → "No job posting received" with a manual link.
+
 ## MCP (Codex or Claude Code)
 
 Follow `docs/MCP_SETUP.md` to register the server, then in the agent:

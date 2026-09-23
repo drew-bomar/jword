@@ -1,0 +1,22 @@
+{
+  "name": "@jword/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome extension that reads a job posting and hands it to the jword capture page.",
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json && node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@jword/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.4",
+    "esbuild": "0.28.2",
+    "happy-dom": "^20.0.0",
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  }
+}

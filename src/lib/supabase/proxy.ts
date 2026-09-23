@@ -32,7 +32,9 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
-    url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
+    // Keep the query so e.g. /capture?embed=1 (the extension side panel) survives sign-in.
+    const target = pathname + request.nextUrl.search;
+    url.search = target === "/" ? "" : `?next=${encodeURIComponent(target)}`;
     return NextResponse.redirect(url);
   }
   if (user && pathname === "/sign-in") {

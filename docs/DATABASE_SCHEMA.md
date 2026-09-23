@@ -102,7 +102,7 @@ Constraint/index:
 | `external_job_id`  | text        | nullable                                                                    |
 | `location`         | text        | nullable                                                                    |
 | `work_arrangement` | enum        | default UNKNOWN                                                             |
-| `description`      | text        | nullable; manual storage only in v1                                         |
+| `description`      | text        | nullable; entered manually or captured from a posting (decision 016)        |
 | `date_posted`      | date        | nullable                                                                    |
 | `source`           | text        | nullable                                                                    |
 | `created_at`       | timestamptz | default now                                                                 |

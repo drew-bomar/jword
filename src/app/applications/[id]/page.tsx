@@ -123,6 +123,15 @@ export default async function ApplicationDetailPage({
           </dl>
         </section>
 
+        {application.description ? (
+          <details className="rounded-lg border px-4 py-3 text-sm">
+            <summary className="cursor-pointer font-medium">Job description</summary>
+            <p className="text-muted-foreground mt-3 leading-relaxed whitespace-pre-wrap">
+              {application.description}
+            </p>
+          </details>
+        ) : null}
+
         <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-3">
             <NotesSection

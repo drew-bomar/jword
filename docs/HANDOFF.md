@@ -2,6 +2,41 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Browser extension capture (2026-09-22)
+
+Branch `claude/extension-capture`, [decision 016](decisions/016-browser-extension-capture.md). A
+Chrome extension reads a job posting and opens jword's `/capture` page, where the owner reviews it
+and creates a new application or explicitly updates a matching one. Hosted Supabase received
+migration 005 the same day (owner-run `supabase db push`; row counts unchanged).
+
+Runtime path: toolbar click → `packages/extension` extractor in the job tab → Chrome side panel
+framing `/capture?embed=1` → `postMessage` handoff → Zod-validated preview → `createApplicationAction` or
+`updateDetailsAction` → shared service → database function. No new mutation service, RPC, route
+handler, migration, or credential.
+
+Files worth understanding:
+
+- `packages/core/src/capture/plan.ts`: which posting fields a capture may write and what is
+  pre-selected (blanks yes, overwrites no; never status/priority/company/title).
+- `src/features/capture/capture-workspace.tsx`: match choice, per-field update plan, stale-version
+  refresh, reuse of the reliable-mutation hook.
+- `packages/extension/src/background.ts` and `panel.ts`: activeTab extraction, side panel, and the
+  origin-restricted `postMessage` handoff to the framed page.
+- `packages/extension/src/extract/index.ts`: adapter → JSON-LD → meta merge with guess flags.
+
+Design tradeoff: the preview is jword's own page framed in the side panel, so the extension needs
+no API or credentials and the existing Server Action/session/retry path is reused. Chrome does not
+keep cookies set inside that frame, so signing in happens in a normal tab. New captures default to
+status APPLIED.
+
+Verification: `pnpm check` (129 unit tests), `pnpm test:integration` (29), `pnpm test:e2e` (31
+passed, 5 intentional skips; includes loading the built extension into Chromium and a sign-in
+redirect), `pnpm mcp:build`, `pnpm build --webpack`. Extractors were run against live Greenhouse,
+Lever, Ashby, Workday, and LinkedIn pages. Gaps: LinkedIn's "About the job" did not render in the
+automation tab, so LinkedIn description capture is unverified live; the sign-in form's `next`
+redirect (code entry) is covered only manually. See the extension checklist in
+[MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md).
+
 ## Reliability follow-up (2026-09-22)
 
 The four review gaps are addressed: uncertain saves retry the identical command, conflict refreshes

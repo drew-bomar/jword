@@ -4,15 +4,16 @@
 
 Implemented as described below. Concrete locations:
 
-| Layer            | Where                                                                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)          |
-| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                          |
-| Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                   |
-| Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                   |
-| Repositories     | `packages/core/src/repositories/supabase.ts` (owner-scoped queries + RPC), `types.ts` (contract), `testing/fake-repository.ts` (in-memory double) |
-| Database         | `supabase/migrations/20260921000100_schema.sql`, `..._mutation_functions.sql`, `..._candidate_profiles.sql`                                       |
-| Import pipeline  | `packages/core/src/import/*` (parse, map, validate, duplicates)                                                                                   |
+| Layer            | Where                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)            |
+| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                            |
+| Posting capture  | `packages/extension` (Chrome extension: reads postings), `src/app/capture` + `src/features/capture` (review/save page), `packages/core/src/capture` |
+| Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                     |
+| Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                     |
+| Repositories     | `packages/core/src/repositories/supabase.ts` (owner-scoped queries + RPC), `types.ts` (contract), `testing/fake-repository.ts` (in-memory double)   |
+| Database         | `supabase/migrations/20260921000100_schema.sql`, `..._mutation_functions.sql`, `..._candidate_profiles.sql`                                         |
+| Import pipeline  | `packages/core/src/import/*` (parse, map, validate, duplicates)                                                                                     |
 
 Deviations from the original plan are recorded in [decision 014](decisions/014-mvp-implementation-deviations.md): the candidate profile is included at the owner's request, and automated tests run against a local Supabase stack while the hosted project remains the real tracker.
 
@@ -306,3 +307,25 @@ These choices must preserve the contracts above.
 - `domain/date-policy.ts` defines interactive date policy used by services and the test repository. Status services read current state to evaluate defaults; this read does not replace the database’s locked version check. Caller intent remains unchanged for retry fingerprints.
 - Migration 005 places mutation implementations in the private schema and validates direct RPC inputs before delegating. SQL repeats essential write invariants because callers can bypass TypeScript. Company matching, duplicate detection, receipts, and history stay inside the transaction so concurrent saves cannot bypass them.
 - Browser tests use `.next-e2e` on port 3100 so an existing developer server can remain running.
+
+## Posting capture (2026-09-22)
+
+Approved in [decision 016](decisions/016-browser-extension-capture.md). A Chrome extension reads a job
+posting and opens jword's `/capture` page, which previews it and saves through the existing Server
+Actions. The extension is a third entry point only in the sense of supplying untrusted prefill; it
+holds no credentials and never calls jword's server.
+
+```mermaid
+flowchart LR
+    J["Job page"] -->|toolbar click, activeTab| X["Extension extractor"]
+    X -->|side panel frames /capture, postMessage| P["/capture page (browser)"]
+    P -->|Zod-validated preview, owner choice| A["Server Actions"]
+    A --> S["Shared services"] --> DB["Database functions"]
+```
+
+- `packages/core/src/capture`: payload schema/normalizer and `planCaptureUpdate`, the rule for which
+  posting fields may be written (blank fields pre-selected, overwrites opt-in; never status,
+  priority, owner dates, company, or title).
+- Creation reuses `createApplication` (duplicate check, `allowDuplicate` only after the owner saw
+  the candidates). Updates reuse `updateApplicationDetails` with `expectedVersion`; a stale version
+  refreshes the current values and keeps the owner's selection.

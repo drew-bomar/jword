@@ -7,3 +7,4 @@ export * from "./domain/types";
 export * from "./validation/schemas";
 export * from "./import/index";
 export * from "./domain/match";
+export * from "./capture/index";

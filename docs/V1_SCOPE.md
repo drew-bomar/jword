@@ -52,7 +52,7 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - personalized job recommendations
 - automatic job discovery or scraping
 - automated job submission
-- Chrome/browser autofill extension
+- Chrome/browser autofill extension (a capture-only extension that reads postings into jword was added in [decision 016](decisions/016-browser-extension-capture.md); filling application forms remains out of scope)
 - resume generation or tailoring
 - interview-preparation workspace
 - Gmail, Outlook, calendar, Slack, or notification integrations
@@ -96,12 +96,12 @@ v1 is complete when all of the following are true:
 
 Revisit these only when the trigger occurs:
 
-| Decision                               | Trigger                                                                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Embedded chat/provider abstraction     | The terminal/Codex workflow is proven and an in-app chat is still valuable                                         |
-| Candidate profile expansion            | An approved recommendation/autofill feature requires more than the basic profile added in decision 014             |
-| Job recommendations                    | The tracker is stable and the owner wants help finding suitable opportunities; define profile requirements then    |
-| Application autofill/browser extension | Repeatedly entering application information becomes a priority; design the candidate profile alongside the feature |
-| Interview workspace                    | Interview volume makes separate preparation state useful                                                           |
-| Email/calendar integration             | Manual timeline upkeep becomes unreliable                                                                          |
-| Multi-user/SaaS architecture           | A real second user is invited                                                                                      |
+| Decision                           | Trigger                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Embedded chat/provider abstraction | The terminal/Codex workflow is proven and an in-app chat is still valuable                                         |
+| Candidate profile expansion        | An approved recommendation/autofill feature requires more than the basic profile added in decision 014             |
+| Job recommendations                | The tracker is stable and the owner wants help finding suitable opportunities; define profile requirements then    |
+| Application autofill               | Repeatedly entering application information becomes a priority; design the candidate profile alongside the feature |
+| Interview workspace                | Interview volume makes separate preparation state useful                                                           |
+| Email/calendar integration         | Manual timeline upkeep becomes unreliable                                                                          |
+| Multi-user/SaaS architecture       | A real second user is invited                                                                                      |
