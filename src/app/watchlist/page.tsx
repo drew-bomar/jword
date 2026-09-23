@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { isAtsProvider, WATCHLIST_WEB_PAGE_SIZE } from "@jword/core/browser";
 import { AppShell } from "@/components/app-shell";
 import { PageNavigation } from "@/components/page-navigation";
+import { SuggestFromApplicationsDialog } from "@/features/watchlist/suggest-dialog";
 import { AddWatchDialog } from "@/features/watchlist/watch-dialogs";
 import {
   WatchFiltersBar,
@@ -50,10 +51,13 @@ export default async function WatchlistPage({ searchParams }: PageProps<"/watchl
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Watchlist</h1>
             <p className="text-muted-foreground text-xs">
-              Companies whose public job boards jword will check. Nothing is fetched yet.
+              Companies and the public job boards jword will check for them.
             </p>
           </div>
-          <AddWatchDialog />
+          <div className="flex flex-wrap gap-2">
+            <SuggestFromApplicationsDialog />
+            <AddWatchDialog />
+          </div>
         </div>
 
         <WatchFiltersBar filters={filters} />

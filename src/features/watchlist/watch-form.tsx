@@ -4,14 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
-  ATS_PROVIDER_LABELS,
-  ATS_PROVIDERS,
-  canonicalBoardUrl,
-  inferBoardFromUrl,
-  isSupportedBoardProvider,
   normalizeName,
-  type AtsProvider,
   type CompanyOption,
+  type WatchBoard,
   type WatchedCompany,
 } from "@jword/core/browser";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -34,13 +29,12 @@ import {
   setWatchStatusAction,
   updateWatchAction,
 } from "@/server/actions/watchlist";
+import { BoardPicker, boardLabel } from "./board-picker";
 
 interface WatchFormValues {
   company: string;
   companyId: string | null;
-  provider: AtsProvider;
-  boardIdentifier: string;
-  careersUrl: string;
+  boards: WatchBoard[];
   interestLevel: string;
   websiteUrl: string;
   companyNotes: string;
@@ -49,9 +43,7 @@ interface WatchFormValues {
 const EMPTY: WatchFormValues = {
   company: "",
   companyId: null,
-  provider: "GREENHOUSE",
-  boardIdentifier: "",
-  careersUrl: "",
+  boards: [],
   interestLevel: "",
   websiteUrl: "",
   companyNotes: "",
@@ -61,27 +53,26 @@ function valuesFromWatch(watch: WatchedCompany): WatchFormValues {
   return {
     company: watch.company,
     companyId: watch.companyId,
-    provider: watch.provider,
-    boardIdentifier: watch.boardIdentifier ?? "",
-    careersUrl: watch.provider === "OTHER" ? (watch.boardUrl ?? "") : "",
+    boards: watch.boards,
     interestLevel: watch.interestLevel === null ? "" : String(watch.interestLevel),
     websiteUrl: watch.websiteUrl ?? "",
     companyNotes: watch.companyNotes ?? "",
   };
 }
 
-const FIELD_LABELS: Record<keyof WatchFormValues, string> = {
+type Key = keyof WatchFormValues;
+const same = (a: WatchFormValues[Key], b: WatchFormValues[Key]) =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+const FIELD_LABELS: Record<Key, string> = {
   company: "company",
   companyId: "company",
-  provider: "provider",
-  boardIdentifier: "board identifier",
-  careersUrl: "careers page URL",
+  boards: "boards",
   interestLevel: "interest",
   websiteUrl: "website",
   companyNotes: "company notes",
 };
 
-const BOARD_KEYS: Array<keyof WatchFormValues> = ["provider", "boardIdentifier", "careersUrl"];
 const NO_INTEREST = "__none__";
 
 type Mode = { kind: "add" } | { kind: "edit"; watch: WatchedCompany };
@@ -94,8 +85,10 @@ interface AlreadyWatched {
 }
 
 function FieldError({ errors, name }: { errors?: Record<string, string[]>; name: string }) {
-  const messages = errors?.[name];
-  if (!messages?.length) return null;
+  const messages = Object.entries(errors ?? {})
+    .filter(([key]) => key === name || key.startsWith(`${name}.`))
+    .flatMap(([, list]) => list);
+  if (!messages.length) return null;
   return (
     <p id={`watch-${name}-error`} className="text-destructive text-xs" role="alert">
       {messages[0]}
@@ -105,9 +98,17 @@ function FieldError({ errors, name }: { errors?: Record<string, string[]>; name:
 
 const textOrNull = (v: string) => (v.trim() === "" ? null : v.trim());
 
+/** Boards as the command sends them: supported boards by identifier, OTHER by careers URL. */
+const boardsCommand = (boards: WatchBoard[]) =>
+  boards.map((b) =>
+    b.provider === "OTHER"
+      ? { provider: b.provider, boardUrl: b.boardUrl }
+      : { provider: b.provider, boardIdentifier: b.boardIdentifier },
+  );
+
 /**
  * Add/edit form for one watched company. Business rules live in the shared service and the
- * database function; this component collects input, pre-fills board settings from a pasted URL,
+ * database function; this component collects input, runs board discovery through the picker,
  * and handles the duplicate, stale-version, and unconfirmed-save flows.
  */
 export function WatchForm({
@@ -128,8 +129,6 @@ export function WatchForm({
   );
   const [values, setValues] = useState<WatchFormValues>(initial);
   const [baseline, setBaseline] = useState(initial);
-  const [pastedUrl, setPastedUrl] = useState("");
-  const [pasteHint, setPasteHint] = useState<string | null>(null);
   const [options, setOptions] = useState<CompanyOption[]>([]);
   const [error, setError] = useState<ActionError | null>(null);
   const [alreadyWatched, setAlreadyWatched] = useState<AlreadyWatched | null>(null);
@@ -146,7 +145,7 @@ export function WatchForm({
     onBusyChange?.(busy);
   }, [busy, onBusyChange]);
 
-  const set = <K extends keyof WatchFormValues>(key: K, value: WatchFormValues[K]) =>
+  const set = <K extends Key>(key: K, value: WatchFormValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
 
   // Existing-company suggestions while typing a name (add mode, nothing selected yet).
@@ -168,38 +167,6 @@ export function WatchForm({
     (o) => normalizeName(o.name) === normalizeName(values.company),
   );
 
-  function applyPastedUrl(raw: string) {
-    setPastedUrl(raw);
-    const inferred = inferBoardFromUrl(raw);
-    if (inferred) {
-      setValues((v) => ({
-        ...v,
-        provider: inferred.provider,
-        boardIdentifier: inferred.boardIdentifier,
-        careersUrl: "",
-      }));
-      setPasteHint(
-        `Detected ${ATS_PROVIDER_LABELS[inferred.provider]} board “${inferred.boardIdentifier}”. Review before saving.`,
-      );
-    } else if (/^https?:\/\/\S+$/i.test(raw.trim())) {
-      setValues((v) => ({ ...v, provider: "OTHER", boardIdentifier: "", careersUrl: raw.trim() }));
-      setPasteHint(
-        "Not a Greenhouse, Lever, or Ashby board URL, so it is set as Other with this careers page. Change the provider if that is wrong.",
-      );
-    } else {
-      setPasteHint(raw.trim() ? "Paste a full URL starting with https://." : null);
-    }
-  }
-
-  function boardFields(v: WatchFormValues) {
-    const supported = isSupportedBoardProvider(v.provider);
-    return {
-      provider: v.provider,
-      boardIdentifier: supported ? textOrNull(v.boardIdentifier) : null,
-      boardUrl: supported ? null : textOrNull(v.careersUrl),
-    };
-  }
-
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (pending || ((stale || newer) && !unconfirmed)) return;
@@ -207,14 +174,11 @@ export function WatchForm({
     setAlreadyWatched(null);
     startTransition(async () => {
       if (mode.kind === "add") {
-        const board = boardFields(values);
         const result = await save(
           {
             company: values.company,
             companyId: values.companyId ?? undefined,
-            provider: board.provider,
-            boardIdentifier: board.boardIdentifier ?? undefined,
-            boardUrl: board.boardUrl ?? undefined,
+            boards: boardsCommand(values.boards),
             // Blank company fields leave an existing company's values unchanged.
             interestLevel: values.interestLevel ? Number(values.interestLevel) : undefined,
             websiteUrl: textOrNull(values.websiteUrl) ?? undefined,
@@ -244,12 +208,9 @@ export function WatchForm({
         return;
       }
 
-      const changed = (Object.keys(values) as Array<keyof WatchFormValues>).filter(
-        (key) => values[key] !== baseline[key],
-      );
+      const changed = (Object.keys(values) as Key[]).filter((k) => !same(values[k], baseline[k]));
       const patch: Record<string, unknown> = {};
-      if (changed.some((key) => BOARD_KEYS.includes(key)))
-        Object.assign(patch, boardFields(values));
+      if (changed.includes("boards")) patch.boards = boardsCommand(values.boards);
       if (changed.includes("interestLevel"))
         patch.interestLevel = values.interestLevel ? Number(values.interestLevel) : null;
       if (changed.includes("websiteUrl")) patch.websiteUrl = textOrNull(values.websiteUrl);
@@ -304,9 +265,11 @@ export function WatchForm({
 
   const fieldErrors = error?.fieldErrors;
   const isEdit = mode.kind === "edit";
-  const supported = isSupportedBoardProvider(values.provider);
-  const identifier = values.boardIdentifier.trim();
   const locked = pending || unconfirmed || reactivation.unconfirmed;
+  const display = (key: Key, value: WatchFormValues[Key]) =>
+    key === "boards"
+      ? (value as WatchBoard[]).map(boardLabel).join(", ") || "none"
+      : String(value) || "blank";
 
   return (
     <form onSubmit={submit} className="space-y-5" noValidate>
@@ -329,7 +292,7 @@ export function WatchForm({
                   const latest = valuesFromWatch(mode.watch);
                   const draft = Object.fromEntries(
                     Object.entries(values).filter(
-                      ([key, value]) => value !== baseline[key as keyof WatchFormValues],
+                      ([key, value]) => !same(value, baseline[key as Key]),
                     ),
                   );
                   setValues({ ...latest, ...draft });
@@ -344,22 +307,12 @@ export function WatchForm({
           </div>
           {newer && mode.kind === "edit" ? (
             <dl className="mt-2 text-sm">
-              {(
-                Object.entries(valuesFromWatch(mode.watch)) as Array<
-                  [keyof WatchFormValues, string]
-                >
-              )
-                .filter(([key, value]) => key !== "companyId" && value !== baseline[key])
+              {(Object.entries(valuesFromWatch(mode.watch)) as Array<[Key, WatchFormValues[Key]]>)
+                .filter(([key, value]) => key !== "companyId" && !same(value, baseline[key]))
                 .map(([key, value]) => (
                   <div key={key}>
                     <dt className="font-medium">Latest saved {FIELD_LABELS[key]}</dt>
-                    <dd>
-                      {!value
-                        ? "blank"
-                        : key === "provider"
-                          ? ATS_PROVIDER_LABELS[value as AtsProvider]
-                          : value}
-                    </dd>
+                    <dd>{display(key, value)}</dd>
                   </div>
                 ))}
             </dl>
@@ -398,29 +351,6 @@ export function WatchForm({
       ) : null}
 
       <fieldset disabled={locked} className="min-w-0 space-y-5">
-        {!isEdit ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="watch-pasted-url">Board or careers URL</Label>
-            <Input
-              id="watch-pasted-url"
-              type="url"
-              inputMode="url"
-              placeholder="https://job-boards.greenhouse.io/…"
-              value={pastedUrl}
-              onChange={(e) => applyPastedUrl(e.target.value)}
-              aria-describedby="watch-pasted-url-hint"
-            />
-            <p
-              id="watch-pasted-url-hint"
-              className="text-muted-foreground text-xs"
-              aria-live="polite"
-            >
-              {pasteHint ??
-                "Paste a Greenhouse, Lever, or Ashby link to fill in the board settings. Nothing is fetched."}
-            </p>
-          </div>
-        ) : null}
-
         <div className="space-y-1.5">
           <Label htmlFor="watch-company">Company *</Label>
           {isEdit ? (
@@ -490,63 +420,18 @@ export function WatchForm({
           <FieldError errors={fieldErrors} name="company" />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="watch-provider">Provider</Label>
-            <Select
-              value={values.provider}
-              onValueChange={(v) => set("provider", v as AtsProvider)}
-            >
-              <SelectTrigger id="watch-provider" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ATS_PROVIDERS.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p === "OTHER" ? "Other (no supported board)" : ATS_PROVIDER_LABELS[p]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {supported ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="watch-board-identifier">Board identifier *</Label>
-              <Input
-                id="watch-board-identifier"
-                autoComplete="off"
-                spellCheck={false}
-                className="font-mono"
-                value={values.boardIdentifier}
-                onChange={(e) => set("boardIdentifier", e.target.value)}
-                aria-invalid={Boolean(fieldErrors?.boardIdentifier)}
-                aria-describedby="watch-board-identifier-hint"
-              />
-              <p
-                id="watch-board-identifier-hint"
-                className="text-muted-foreground text-xs break-all"
-              >
-                {identifier && isSupportedBoardProvider(values.provider)
-                  ? `Board URL: ${canonicalBoardUrl(values.provider, identifier)}`
-                  : "The name after the host in the board URL."}
-              </p>
-              <FieldError errors={fieldErrors} name="boardIdentifier" />
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label htmlFor="watch-careers-url">Careers page URL</Label>
-              <Input
-                id="watch-careers-url"
-                type="url"
-                inputMode="url"
-                placeholder="https://"
-                value={values.careersUrl}
-                onChange={(e) => set("careersUrl", e.target.value)}
-                aria-invalid={Boolean(fieldErrors?.boardUrl)}
-              />
-              <FieldError errors={fieldErrors} name="boardUrl" />
-            </div>
-          )}
+        <div className="border-t pt-4">
+          <BoardPicker
+            company={values.company}
+            companyId={values.companyId}
+            websiteUrl={values.websiteUrl}
+            selected={values.boards}
+            onChange={(boards) => set("boards", boards)}
+            watchId={mode.kind === "edit" ? mode.watch.watchId : undefined}
+            autoSearch={!isEdit}
+            disabled={locked}
+          />
+          <FieldError errors={fieldErrors} name="boards" />
         </div>
 
         <div className="space-y-3 border-t pt-4">

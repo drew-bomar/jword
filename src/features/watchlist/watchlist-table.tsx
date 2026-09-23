@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ExternalLinkIcon, RadarIcon, SearchXIcon } from "lucide-react";
-import { ACTOR_LABELS, type WatchedCompany } from "@jword/core/browser";
+import { ACTOR_LABELS, ATS_PROVIDER_LABELS, type WatchedCompany } from "@jword/core/browser";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -12,29 +12,34 @@ import {
 } from "@/components/ui/table";
 import { formatRelative } from "@/lib/format";
 import { InterestLevel, ProviderBadge, WatchStateBadge } from "./badges";
+import { SuggestFromApplicationsDialog } from "./suggest-dialog";
 import { AddWatchDialog, EditWatchDialog } from "./watch-dialogs";
 import { WatchStatusButton } from "./watch-status-button";
 
-function Board({ watch }: { watch: WatchedCompany }) {
-  const label = watch.provider === "OTHER" ? "Careers page" : watch.boardIdentifier;
+function Boards({ watch }: { watch: WatchedCompany }) {
+  if (!watch.boards.length) {
+    return <span className="text-muted-foreground text-xs">No board yet</span>;
+  }
   return (
-    <span className="inline-flex min-w-0 items-center gap-2">
-      <ProviderBadge provider={watch.provider} />
-      {watch.boardUrl ? (
-        <a
-          href={watch.boardUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-muted-foreground hover:text-foreground inline-flex min-w-0 items-center gap-1 font-mono text-xs hover:underline"
-          aria-label={`Open ${watch.company} ${watch.provider === "OTHER" ? "careers page" : "job board"}`}
-        >
-          <span className="truncate">{label}</span>
-          <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
-        </a>
-      ) : (
-        <span className="text-muted-foreground text-xs">No board</span>
-      )}
-    </span>
+    <ul className="flex flex-col gap-1" aria-label={`${watch.company} job boards`}>
+      {watch.boards.map((board) => (
+        <li key={board.boardUrl} className="inline-flex min-w-0 items-center gap-2">
+          <ProviderBadge provider={board.provider} />
+          <a
+            href={board.boardUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-muted-foreground hover:text-foreground inline-flex min-w-0 items-center gap-1 font-mono text-xs hover:underline"
+            aria-label={`Open ${watch.company} ${board.provider === "OTHER" ? "careers page" : `${ATS_PROVIDER_LABELS[board.provider]} board`}`}
+          >
+            <span className="truncate">
+              {board.provider === "OTHER" ? "Careers page" : board.boardIdentifier}
+            </span>
+            <ExternalLinkIcon className="size-3.5 shrink-0" aria-hidden />
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -90,8 +95,13 @@ export function WatchlistTable({
       <EmptyState
         icon={<RadarIcon className="size-6" aria-hidden />}
         title="No watched companies yet"
-        description="Add a company whose public job board you want jword to check later. Paste a Greenhouse, Lever, or Ashby board URL to fill in the details."
-        actions={<AddWatchDialog />}
+        description="Add a company and jword looks up its Greenhouse, Lever, and Ashby job boards for you. You can also start from the companies you already applied to."
+        actions={
+          <>
+            <AddWatchDialog />
+            <SuggestFromApplicationsDialog />
+          </>
+        }
       />
     );
   }
@@ -118,7 +128,7 @@ export function WatchlistTable({
           <TableHeader>
             <TableRow>
               <TableHead>Company</TableHead>
-              <TableHead>Board</TableHead>
+              <TableHead>Boards</TableHead>
               <TableHead>Interest</TableHead>
               <TableHead>Monitoring</TableHead>
               <TableHead>Last change</TableHead>
@@ -137,7 +147,7 @@ export function WatchlistTable({
                   </div>
                 </TableCell>
                 <TableCell className="max-w-[280px]">
-                  <Board watch={watch} />
+                  <Boards watch={watch} />
                 </TableCell>
                 <TableCell>
                   <InterestLevel value={watch.interestLevel} />
@@ -169,7 +179,7 @@ export function WatchlistTable({
               <WatchStateBadge active={watch.active} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <Board watch={watch} />
+              <Boards watch={watch} />
               <span className="text-muted-foreground">
                 Interest <InterestLevel value={watch.interestLevel} />
               </span>

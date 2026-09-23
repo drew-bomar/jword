@@ -53,8 +53,9 @@ export function AddWatchDialog() {
         <DialogHeader>
           <DialogTitle>Add to watchlist</DialogTitle>
           <DialogDescription>
-            Saves which job board to check later. jword does not fetch postings yet, and adding a
-            company never changes its applications.
+            jword looks up the company&apos;s Greenhouse, Lever, and Ashby boards; you pick up to
+            three. Job postings are not collected yet, and adding a company never changes its
+            applications.
           </DialogDescription>
         </DialogHeader>
         {dialog.open ? (
