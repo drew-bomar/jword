@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/", label: "Applications" },
+  { href: "/watchlist", label: "Watchlist" },
   { href: "/import", label: "Import" },
   { href: "/settings/profile", label: "Profile" },
 ];
@@ -13,7 +14,10 @@ const LINKS = [
 export function NavLinks() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
+    <nav
+      aria-label="Primary"
+      className="flex min-w-0 items-center gap-0.5 overflow-x-auto text-sm sm:gap-1"
+    >
       {LINKS.map((link) => {
         const active =
           link.href === "/"
@@ -25,7 +29,7 @@ export function NavLinks() {
             href={link.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-md px-2 py-1 transition-colors focus-visible:ring-3 focus-visible:outline-none",
+              "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 shrink-0 rounded-md px-1.5 py-1 transition-colors focus-visible:ring-3 focus-visible:outline-none sm:px-2",
               active && "bg-muted text-foreground",
             )}
           >

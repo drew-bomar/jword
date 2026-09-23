@@ -9,12 +9,12 @@ export function AppShell({ children, email }: { children: React.ReactNode; email
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 border-b backdrop-blur">
-        <div className="mx-auto flex h-12 w-full max-w-7xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-12 w-full max-w-7xl items-center gap-2 px-4 sm:gap-4 sm:px-6">
           <Link href="/" className="font-semibold tracking-tight">
             jword
           </Link>
           <NavLinks />
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1">
             {email ? (
               <span className="text-muted-foreground hidden text-xs sm:inline">{email}</span>
             ) : null}
