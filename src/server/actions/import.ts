@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import * as z from "zod";
 import { IMPORT_FIELDS, IMPORT_MAX_BYTES, type MutationResult } from "@jword/core/browser";
 import { parseOrThrow, safeMutationResult, type ImportPreview } from "@jword/core";
 import { requireSession } from "@/server/auth/session";

@@ -1,4 +1,4 @@
-import type { CapturedPostingPayload } from "@jword/core/browser";
+import type { CapturedPosting } from "@jword/core/browser";
 
 /**
  * Messages between the overlay frame, the background worker, and the page host (decision 017).
@@ -36,7 +36,8 @@ export type OverlayRequest =
   | { type: "jword:open-options"; nonce: string };
 
 export interface OverlayCapture {
-  payload: CapturedPostingPayload;
+  /** Already validated and fitted to jword's limits by the background worker. */
+  posting: CapturedPosting;
   /** jword origin, e.g. http://localhost:3200; used for links that open jword in a tab. */
   jwordUrl: string;
 }

@@ -6,7 +6,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 // Bundles the unpacked Chrome extension into dist/. Load dist/ via chrome://extensions.
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist");
-const common = { bundle: true, target: "chrome120", logLevel: "warning" };
+const common = { bundle: true, minify: true, target: "chrome120", logLevel: "warning" };
 await build({
   ...common,
   entryPoints: ["src/background.ts"],
@@ -29,7 +29,6 @@ await build({
   format: "iife",
   outfile: "dist/overlay.js",
   jsx: "automatic",
-  minify: true,
   define: { "process.env.NODE_ENV": '"production"' },
 });
 const css = "src/overlay/overlay.css";

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { APPLICATION_PRIORITIES, APPLICATION_STATUSES, WORK_ARRANGEMENTS } from "../domain/enums";
 import { isIsoDate } from "../domain/dates";
 import { JwordError } from "../domain/errors";
