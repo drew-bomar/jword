@@ -4,6 +4,12 @@ A 90-minute session to understand the company watchlist: what it stores, how one
 from the browser to Postgres and back, and how it prepares for job discovery without doing any.
 Read top to bottom. Open the linked files when a section points at them.
 
+> **Updated 2026-09-23 for [decision 019](decisions/019-board-discovery.md).** Boards now live in
+> `company_watch_boards` (up to three per company) and are found automatically. Sections 1-9
+> still explain the watch itself; where they mention one board per watch or the pasted-URL form,
+> read section 10, which covers discovery and the board table. Budget 15 of the 90 minutes for it
+> by skimming section 5.
+
 Terms used below:
 
 - **ATS**: applicant tracking system. Greenhouse, Lever, and Ashby host companies' public job
@@ -363,6 +369,60 @@ same composite FK pattern). All three now exist. Promoting a lead will reuse
    `watchId` and version so the UI and agent can offer it in one step.
 8. In the watchlist service, calling a core `BoardAdapter.listPostings`. It must not store
    postings, create leads, or run on a schedule; those belong to later tickets.
+
+</details>
+
+---
+
+## 10. Board discovery and multiple boards (decision 019, 15 min)
+
+**In plain language.** You type a company; jword works out which job boards it probably has and
+shows its evidence. You tick up to three. Nothing about postings is saved.
+
+**Where the evidence comes from.**
+
+1. _Your own data._ Job links on the company's saved applications, parsed with the same
+   `inferBoardFromUrl` as before. No network.
+2. _Public board APIs._ `boardNameCandidates("Scale AI")` gives `scaleai`, `scale-ai`, `scale`
+   (plus the website's domain name). Each is tried on Greenhouse, Lever, and Ashby through a
+   `BoardDirectory` (`packages/core/src/discovery/directory.ts`). A 404 means no board. Greenhouse
+   and Ashby report the board's own company name; Lever's name comes from its page title.
+3. _Ranking._ `rateBoard` (`discovery/rank.ts`) marks a board **high** when a saved application
+   links to it, its name matches, or its website matches. It marks **medium** when the names
+   only overlap, and **low** otherwise, with reasons in plain words. Only high boards are
+   pre-ticked.
+
+**Trace: typing "Stripe" in the add dialog.**
+`BoardPicker` waits for typing to pause (800 ms) → `discoverBoardsAction` (session check) →
+`discoverCompanyBoards` → repository reads (company by name, its job URLs, all watched boards)
+→ up to 15 lookups, 6 at a time, each with a 6-second timeout → ranked `BoardSuggestion[]` →
+the picker ticks strong matches not watched elsewhere. On save, the form sends
+`boards: [{ provider, boardIdentifier }]` and `create_company_watch` validates and writes them
+in the same transaction as the watch, audit row, and receipt.
+
+**Why a child table.** The watch keeps one active flag, one version, and one history. Boards are
+its configuration. `position` is checked 1-3 and unique per watch, so the cap of three is a
+database rule, not only a UI rule. An update replaces the whole set; the audit metadata keeps the
+before and after lists.
+
+**Security of the outbound calls.** Hosts are fixed in code; only the pattern-checked board name
+varies, so input cannot make jword fetch arbitrary URLs. Responses are size-capped and time-
+limited, nothing is stored, and failures become "could not reach" rather than errors. Tests never
+touch the network: unit tests pass a fake `fetch`, and Playwright uses fixtures
+(`JWORD_BOARD_DIRECTORY=fixtures`).
+
+**Questions.**
+
+9. Why is a Lever board named `notion` not pre-ticked for Notion?
+10. What stops a fourth board if a direct database call skips the form and service?
+
+<details>
+<summary>Answers</summary>
+
+9. Its page title names "Notion Hardware Co.", which only overlaps with "Notion", so it rates
+   medium. Same-name boards often belong to different companies, so jword asks.
+10. `company_watch_boards.position` must be between 1 and 3 and unique per watch, and
+    `jword.validate_watch_command` rejects arrays longer than three before anything is written.
 
 </details>
 

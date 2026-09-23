@@ -2,6 +2,20 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Board discovery (JWO-16 follow-up, 2026-09-23)
+
+[Decision 019](decisions/019-board-discovery.md). Branch `claude/board-discovery`, stacked on
+`claude/jwo-16-company-watchlist`. Adding a company now looks up its boards: saved application
+links plus the public Greenhouse, Lever, and Ashby APIs. Results are ranked with reasons and
+strong matches are pre-ticked; the owner confirms. A company can have up to three boards
+(`company_watch_boards`, capped by the database). "Suggest from applications" watches
+already-applied companies in one step. MCP gains `discover_company_boards` and
+`suggest_watches_from_applications`.
+
+Hosted step (owner): `pnpm exec supabase db push` applies `20260923000100_watch_boards.sql`,
+which moves existing boards into the new table. Then deploy; the old page code does not work
+after this migration, so push and deploy together.
+
 ## Company watchlist (JWO-16, 2026-09-22)
 
 [Decision 018](decisions/018-company-watchlist.md). Branch `claude/jwo-16-company-watchlist`.

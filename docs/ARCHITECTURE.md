@@ -7,7 +7,7 @@ Implemented as described below. Concrete locations:
 | Layer            | Where                                                                                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)                                                                           |
-| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `watchlist-tools.ts` (5 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                           |
+| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `watchlist-tools.ts` (7 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                           |
 | Posting capture  | `packages/extension` (Chrome extension: reads postings, in-page overlay), `src/app/api/extension/*` + `src/server/extension-api.ts` (capture API), `src/features/capture` (review UI), `packages/core/src/capture` |
 | Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                                                                                    |
 | Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                                                                                    |
@@ -377,3 +377,27 @@ flowchart LR
 - Future seam: a per-provider `BoardAdapter.listPostings(board)` in core, called by a later
   "Verify board" action and by collection. Collection state lives in the collection ticket's
   own table.
+
+### Board discovery (2026-09-23)
+
+[Decision 019](decisions/019-board-discovery.md): a watch has up to three boards in
+`company_watch_boards`, and jword finds them. `discoverCompanyBoards` combines saved application
+links with lookups on Greenhouse, Lever, and Ashby's public APIs, using names generated from the
+company name and website, and ranks each board with reasons. The owner, or the agent following
+AGENTS.md, picks which to keep.
+
+```mermaid
+flowchart LR
+    F["Add dialog: company typed"] --> A["discoverBoardsAction (session)"]
+    A --> S["discoverCompanyBoards"]
+    S --> L["Saved job URLs (repository)"]
+    S --> D["BoardDirectory: Greenhouse, Lever, Ashby (fixed hosts, timeouts)"]
+    S --> R["rateBoard: high / medium / low + reasons"]
+    R --> F
+```
+
+- The directory is injected into the services (`src/server/services.ts`,
+  `packages/mcp-server/src/index.ts`). Tests use `createFixtureBoardDirectory`, and Playwright
+  sets `JWORD_BOARD_DIRECTORY=fixtures`.
+- `suggestWatchesFromApplications` (local only) powers "Suggest from applications".
+- Still no job collection, storage, or schedule; those are the next discovery steps.

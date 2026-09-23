@@ -267,6 +267,22 @@ providers, identifier null for OTHER); check that `board_url` is http(s).
 No collection columns (last checked, error count, schedule); those belong to the collection
 ticket. `companies.target_company` is left unused; an active watch is the signal.
 
+**Changed by decision 019 (migration 20260923000100):** `provider`, `board_identifier`, and
+`board_url` moved to `company_watch_boards`; the board constraints above now live there.
+
+### `company_watch_boards` (decision 019)
+
+Up to three job boards per watch. Columns: `id`, `user_id`, `watch_id` (composite FK
+`(user_id, watch_id)` to company_watches, on delete cascade), `position smallint` (check 1-3,
+unique per watch: the database caps a watch at three boards), `provider ats_provider`,
+`board_identifier` (null for OTHER), `board_url` (not null: canonical URL for supported
+providers, careers page for OTHER), `created_at`. Constraints: unique `(watch_id, board_url)`;
+unique `(user_id, provider, lower(board_identifier))` where not null (a board belongs to one
+company per owner); the same shape check as decision 018; http(s) URL check. Owner-only RLS
+select; writes only inside `create_company_watch` / `update_company_watch`, which replace the
+set and record before/after lists in the audit metadata. `company_watch_overview` exposes
+`boards` (JSON array in position order) and `board_providers`.
+
 ### `company_watch_activities` (decision 018)
 
 Append-only audit for watch mutations, the watchlist's counterpart of `application_activities`.

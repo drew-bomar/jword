@@ -35,32 +35,38 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
 12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
     signed-in user to `/forbidden` with a sign-out button.
 
-## Company watchlist (decision 018)
+## Company watchlist (decisions 018, 019)
 
-1. **Open.** Click Watchlist in the header → the empty state explains that nothing is fetched.
-2. **Add from a URL.** Add company → paste `https://job-boards.greenhouse.io/stripe/jobs/123?gh_jid=123`
-   → "Detected Greenhouse board “stripe”", Board identifier `stripe`, and the board URL preview.
-   Type Company "Stripe", choose Interest 4 → Add to watchlist → the row shows Greenhouse,
-   `stripe` (linking to the board), Active, 4/5, and "Started watching Stripe (Greenhouse) · You".
-3. **Other provider.** Add company → paste a careers page such as `https://careers.datadoghq.com/`
-   → the provider becomes Other with that careers URL. Start typing an existing company name and
-   pick it from "Existing companies" → "(existing company)". Save → the row links to "N applications".
-4. **Edit.** Edit Stripe → Interest 5, add company notes → Save → 5/5 and "Updated watch for Stripe".
-5. **Stale edit.** Open /watchlist in two tabs. In tab B open Edit Stripe and type a website. In
-   tab A click Deactivate. Save in tab B → "This watch changed since you opened it"; the draft
-   stays. Refresh latest values → Reapply my edits → Save.
-6. **Deactivate/reactivate.** Deactivate shows Inactive (icon + word) and "Stopped watching";
-   the company's applications are unchanged. Reactivate shows Active and "Resumed watching".
-7. **Duplicate.** With Stripe inactive, Add company "stripe" again → "Stripe is already on your
-   watchlist (inactive). Nothing was added." → Reactivate it → the same row becomes Active; no
-   second row appears.
-8. **Filters.** Search "str", Monitoring Inactive/Active, Provider Lever → matching rows or the
-   "No matching companies" state with Clear filters.
-9. **Phone width.** Below 768px the rows become cards and the header still fits without sideways
-   scrolling.
-10. **MCP.** Ask the agent "What companies am I watching?" (`list_watched_companies`), then
-    "Stop watching Stripe" → `set_company_watch_status` with the watch's `watchId` and version;
-    the web row shows "Stopped watching Stripe · Coding agent".
+Board lookups call the real Greenhouse, Lever, and Ashby APIs from your dev server.
+
+1. **Open.** Click Watchlist in the header → the empty state offers Add company and Suggest from
+   applications.
+2. **Add by name.** Add company → type "Stripe" and pause → within a few seconds "Found N boards"
+   lists Greenhouse `stripe` as a Strong match with its open-job count and sample titles, ticked.
+   Add to watchlist → the row lists the board(s), Active, and "Started watching Stripe (…)".
+3. **Weak matches.** Add a company whose name is common (for example "Notion"). Strong matches are
+   ticked; Possible/Unlikely ones are shown but unticked with the reason (for example a different
+   board name). Tick only what is right.
+4. **Nothing found.** Add a company that uses Workday (for example a large bank) → "No public
+   Greenhouse, Lever, or Ashby board found" with the names tried. Paste its careers URL under Add a
+   board by URL → it is kept as a careers page. Saving with no board also works.
+5. **Three at most.** With three boards selected, adding a fourth by URL says "at most 3" and the
+   remaining checkboxes are disabled.
+6. **Suggest from applications.** Click Suggest from applications → companies you applied to via
+   Greenhouse/Lever/Ashby links are listed with their boards → Watch N companies → they appear in
+   the table.
+7. **Edit.** Edit a company → remove a board, click Find boards, tick another, change interest →
+   Save → the row updates and says "Updated watch for …".
+8. **Stale edit.** Open /watchlist in two tabs. In tab B open Edit and type a website. In tab A
+   click Deactivate. Save in tab B → "This watch changed since you opened it"; the draft stays.
+   Refresh latest values → Reapply my edits → Save.
+9. **Deactivate/reactivate/duplicate.** Deactivate shows Inactive (icon + word); applications are
+   unchanged. Adding the same company again shows its boards as "Already watched for …" and
+   saving offers Reactivate it; no second row appears.
+10. **Phone width.** Rows become cards; the add dialog and header fit without sideways scrolling.
+11. **MCP.** Rebuild (`pnpm mcp:build`), restart the agent, and say "Watch Figma" → the agent calls
+    `discover_company_boards`, adds high-confidence boards with `add_watched_company`, and asks
+    about weaker ones. The web row shows "· Coding agent".
 
 ## Browser extension capture
 

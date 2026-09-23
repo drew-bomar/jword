@@ -3,6 +3,10 @@
 Status: Accepted by the owner on 2026-09-22 (JWO-16 implementation prompt, which approved writing
 and implementing this record in one run). Narrows one item of the v1 exclusions; see Scope.
 
+**Amended by [decision 019](019-board-discovery.md) (2026-09-23):** boards moved to
+`company_watch_boards` (up to three per watch) and are found by board discovery. The
+one-board columns described below were dropped. Everything else here still applies.
+
 ## Context
 
 The owner approved a job-discovery direction built in small slices:

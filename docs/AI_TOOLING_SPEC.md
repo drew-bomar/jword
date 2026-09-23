@@ -236,20 +236,27 @@ Returns counts by status and a short list of stale active applications. This is 
 
 ### Company watchlist tools (decision 018)
 
-Five bounded tools in `packages/mcp-server/src/watchlist-tools.ts`, backed by the same
-watchlist services as the web page. None fetches jobs.
+Seven bounded tools in `packages/mcp-server/src/watchlist-tools.ts`, backed by the same
+watchlist services as the web page. None fetches or stores job postings; only
+`discover_company_boards` calls outside services, to check whether boards exist.
 
 - `list_watched_companies` (read-only): `{ text?, active?, provider?, limit? (default 10, max 25), cursor? }`.
-  Items: `watchId`, `companyId`, `company`, `provider`, `boardIdentifier`, `boardUrl`, `active`,
+  Items: `watchId`, `companyId`, `company`, `boards` (up to three), `active`,
   `version`, `interestLevel`, `applicationCount`, with `hasMore` / `nextCursor`. No notes.
 - `get_watched_company` (read-only): `{ watchId }`. The watch with company website and notes
   (user data), plus recent audit entries.
-- `add_watched_company`: `{ requestId, company? | companyId?, provider, boardIdentifier?, boardUrl? (OTHER only), interestLevel?, websiteUrl?, companyNotes? }`.
+- `discover_company_boards` (read-only, open world): `{ company? | companyId?, websiteUrl? }`.
+  Ranked suggestions (`provider`, `boardIdentifier`, `boardUrl`, `confidence` high/medium/low,
+  `reasons`, `openJobs`, `sampleTitles`, `fromApplications`, `watchedBy`) plus the names tried and
+  any unreachable providers. Saves nothing ([decision 019](decisions/019-board-discovery.md)).
+- `suggest_watches_from_applications` (read-only, local): unwatched companies you applied to with
+  boards parsed from saved job URLs.
+- `add_watched_company`: `{ requestId, company? | companyId?, boards?: Array<{ provider, boardIdentifier? | boardUrl? (OTHER) }> (max 3), interestLevel?, websiteUrl?, companyNotes? }`.
   Returns the new `watchId` and `companyCreated`. An existing watch (active or inactive) is
   `CONFLICT` / `ALREADY_WATCHED` with `watchId` and `watchActive`; the same board under another
   company is `CONFLICT` / `BOARD_ALREADY_WATCHED`.
-- `update_watched_company`: `{ requestId, watchId, expectedVersion, provider?, boardIdentifier?, boardUrl?, interestLevel?, websiteUrl?, companyNotes? }`.
-  At least one field; identical values are a no-op.
+- `update_watched_company`: `{ requestId, watchId, expectedVersion, boards?, interestLevel?, websiteUrl?, companyNotes? }`.
+  At least one field; `boards` replaces the whole set; identical values are a no-op.
 - `set_company_watch_status`: `{ requestId, watchId, expectedVersion, active }`. Deactivation
   is the only "remove"; nothing is deleted.
 
