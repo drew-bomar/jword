@@ -26,6 +26,10 @@ Files worth understanding:
 - `src/features/capture/capture-review.tsx`: the review UI, now taking a `CaptureApi`; bundled
   into the extension with jword's UI kit and Tailwind theme (`packages/extension/build.mjs`).
 
+Bundle trim (same day, after owner testing): the overlay went from 813 KB to 353 KB and the worker
+is 92 KB. The posting is normalized in the worker; core has `"sideEffects": false`; all Zod imports
+use `import * as z from "zod"` (the named `{ z }` import kept every Zod locale, about 450 KB).
+
 Owner setup: set `JWORD_EXTENSION_ID=bnjlbmpmikpggohfhmfpddeeokbjpkbk` in `.env.local` and in
 Vercel, restart, `pnpm ext:build`, and reload the unpacked extension. Its id changes because of
 the pinned key, so remove the old card and load it again.

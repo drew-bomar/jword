@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { XIcon } from "lucide-react";
-import { normalizeCapturedPosting, type CapturedPosting } from "@jword/core/browser";
+import type { CapturedPosting } from "@jword/core/browser";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CaptureReview } from "@/features/capture/capture-review";
@@ -29,13 +29,7 @@ function Overlay() {
     ask<OverlayCapture>({ type: "jword:overlay-hello", nonce }).then(
       (result) => {
         if (!result.ok) return setState({ phase: "failed", message: result.error.message });
-        // The payload came from third-party page markup: validate and fit it to jword's limits.
-        const posting = normalizeCapturedPosting(result.data.payload);
-        setState(
-          posting
-            ? { phase: "ready", posting, jwordUrl: result.data.jwordUrl }
-            : { phase: "failed", message: "The posting could not be read. Try capturing again." },
-        );
+        setState({ phase: "ready", posting: result.data.posting, jwordUrl: result.data.jwordUrl });
       },
       () => setState({ phase: "failed", message: "The jword extension did not answer." }),
     );

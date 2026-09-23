@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { z } from "zod";
+import * as z from "zod";
 import { DEFAULT_TIMEZONE, resolveTimeZone } from "@jword/core";
 
 export interface McpEnv {

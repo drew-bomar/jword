@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { WORK_ARRANGEMENTS, type WorkArrangement } from "../domain/enums";
 import { isIsoDate } from "../domain/dates";
 import { cleanText } from "../domain/normalize";

@@ -67,8 +67,10 @@ already grants full access.
 - decision 005 is amended: jword now has a small JSON API besides Server Actions. It stays limited
   to these five capture operations, is only for the extension origin, and contains no business
   rules.
-- The overlay bundle is large (about 800 KB, mostly Zod and React DOM). It loads from disk, not the
-  network.
+- The overlay bundles React (about 350 KB minified, half of it React DOM). It loads from disk, not
+  the network. Zod stays out of it: the background worker validates the captured posting (about
+  90 KB), and `@jword/core` is marked side-effect-free and imports Zod as `import * as z` so
+  bundlers can drop unused schemas and locales.
 - Narrowing `html` does not move a site's fixed-position elements. Some headers can therefore run
   under the panel.
 - `overlay.html` is a web-accessible resource with `use_dynamic_url`, so pages cannot probe for it

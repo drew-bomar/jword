@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { z } from "zod";
+import * as z from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ActionResult } from "./result";
 

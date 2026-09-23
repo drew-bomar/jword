@@ -1,4 +1,8 @@
-import type { CapturedPostingPayload } from "@jword/core/browser";
+import {
+  normalizeCapturedPosting,
+  type CapturedPosting,
+  type CapturedPostingPayload,
+} from "@jword/core/browser";
 import { callJword } from "./api";
 import {
   REMOVE_OVERLAY,
@@ -47,6 +51,17 @@ async function extractFrom(tabId: number, pageUrl: string): Promise<CapturedPost
   }
 }
 
+/**
+ * The payload comes from third-party page markup, so it is validated here, where it enters the
+ * extension, and fitted to jword's limits. The server validates the final command again.
+ */
+function toPosting(payload: CapturedPostingPayload, pageUrl: string): CapturedPosting {
+  return (
+    normalizeCapturedPosting(payload) ??
+    normalizeCapturedPosting(errorPayload(pageUrl, "The posting could not be read."))!
+  );
+}
+
 async function startCapture(tab: chrome.tabs.Tab) {
   const tabId = tab.id;
   const pageUrl = tab.url ?? "";
@@ -60,7 +75,7 @@ async function startCapture(tab: chrome.tabs.Tab) {
   await chrome.action.setBadgeText({ tabId, text: "" });
   const entry: CaptureEntry = {
     nonce: crypto.randomUUID(),
-    payload: await extractFrom(tabId, pageUrl),
+    posting: toPosting(await extractFrom(tabId, pageUrl), pageUrl),
     jwordUrl: await getJwordOrigin(),
   };
   await chrome.storage.session.set({ [captureKey(tabId)]: entry });
@@ -105,7 +120,7 @@ async function handle(request: OverlayRequest, tabId: number): Promise<ApiResult
   }
   switch (request.type) {
     case "jword:overlay-hello":
-      return { ok: true, data: { payload: entry.payload, jwordUrl: entry.jwordUrl } };
+      return { ok: true, data: { posting: entry.posting, jwordUrl: entry.jwordUrl } };
     case "jword:api": {
       if (!isApiOp(request.op)) return refused("Unknown jword operation.");
       const allowed = await chrome.permissions.contains({
