@@ -251,6 +251,104 @@ export type Database = {
         }
         Relationships: []
       }
+      company_watch_activities: {
+        Row: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          created_at: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          summary: string
+          type: Database["public"]["Enums"]["watch_event_type"]
+          user_id: string
+          watch_id: string
+        }
+        Insert: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          created_at?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          summary: string
+          type: Database["public"]["Enums"]["watch_event_type"]
+          user_id: string
+          watch_id: string
+        }
+        Update: {
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          created_at?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          summary?: string
+          type?: Database["public"]["Enums"]["watch_event_type"]
+          user_id?: string
+          watch_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_watch_activities_watch_owner_fkey"
+            columns: ["user_id", "watch_id"]
+            isOneToOne: false
+            referencedRelation: "company_watch_overview"
+            referencedColumns: ["user_id", "watch_id"]
+          },
+          {
+            foreignKeyName: "company_watch_activities_watch_owner_fkey"
+            columns: ["user_id", "watch_id"]
+            isOneToOne: false
+            referencedRelation: "company_watches"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
+      company_watches: {
+        Row: {
+          active: boolean
+          board_identifier: string | null
+          board_url: string | null
+          company_id: string
+          created_at: string
+          id: string
+          provider: Database["public"]["Enums"]["ats_provider"]
+          updated_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          active?: boolean
+          board_identifier?: string | null
+          board_url?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          provider: Database["public"]["Enums"]["ats_provider"]
+          updated_at?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          active?: boolean
+          board_identifier?: string | null
+          board_url?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          provider?: Database["public"]["Enums"]["ats_provider"]
+          updated_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_watches_company_owner_fkey"
+            columns: ["user_id", "company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
       jobs: {
         Row: {
           company_id: string
@@ -379,6 +477,43 @@ export type Database = {
           },
         ]
       }
+      company_watch_overview: {
+        Row: {
+          active: boolean | null
+          application_count: number | null
+          board_identifier: string | null
+          board_url: string | null
+          company_id: string | null
+          company_name: string | null
+          company_normalized_name: string | null
+          company_notes: string | null
+          created_at: string | null
+          interest_level: number | null
+          last_event_actor_type:
+            | Database["public"]["Enums"]["actor_type"]
+            | null
+          last_event_at: string | null
+          last_event_summary: string | null
+          last_event_type:
+            | Database["public"]["Enums"]["watch_event_type"]
+            | null
+          provider: Database["public"]["Enums"]["ats_provider"] | null
+          updated_at: string | null
+          user_id: string | null
+          version: number | null
+          watch_id: string | null
+          website_url: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_watches_company_owner_fkey"
+            columns: ["user_id", "company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
     }
     Functions: {
       add_application_note: {
@@ -401,6 +536,15 @@ export type Database = {
         }
         Returns: Json
       }
+      create_company_watch: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       import_applications: {
         Args: {
           p_actor: string
@@ -412,6 +556,15 @@ export type Database = {
       }
       save_candidate_profile: {
         Args: { p_command: Json; p_owner_id: string }
+        Returns: Json
+      }
+      set_company_watch_active: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
         Returns: Json
       }
       update_application_details: {
@@ -444,6 +597,15 @@ export type Database = {
         }
         Returns: Json
       }
+      update_company_watch: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       activity_type:
@@ -466,6 +628,12 @@ export type Database = {
         | "OFFER"
         | "REJECTED"
         | "WITHDRAWN"
+      ats_provider: "GREENHOUSE" | "LEVER" | "ASHBY" | "OTHER"
+      watch_event_type:
+        | "WATCH_CREATED"
+        | "WATCH_UPDATED"
+        | "WATCH_ACTIVATED"
+        | "WATCH_DEACTIVATED"
       work_arrangement: "UNKNOWN" | "REMOTE" | "HYBRID" | "ONSITE"
     }
     CompositeTypes: {
@@ -615,6 +783,13 @@ export const Constants = {
         "OFFER",
         "REJECTED",
         "WITHDRAWN",
+      ],
+      ats_provider: ["GREENHOUSE", "LEVER", "ASHBY", "OTHER"],
+      watch_event_type: [
+        "WATCH_CREATED",
+        "WATCH_UPDATED",
+        "WATCH_ACTIVATED",
+        "WATCH_DEACTIVATED",
       ],
       work_arrangement: ["UNKNOWN", "REMOTE", "HYBRID", "ONSITE"],
     },

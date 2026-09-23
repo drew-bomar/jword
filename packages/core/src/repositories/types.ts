@@ -20,6 +20,18 @@ import type {
   UpdateApplicationNoteCommand,
   UpdateApplicationStatusCommand,
 } from "../validation/schemas";
+import type {
+  AddWatchedCompanyCommand,
+  SetCompanyWatchStatusCommand,
+  UpdateWatchedCompanyCommand,
+} from "../watchlist/schemas";
+import type {
+  CompanyOption,
+  WatchActivity,
+  WatchedCompany,
+  WatchListQuery,
+  WatchMutationResult,
+} from "../watchlist/types";
 
 export interface MutationContext {
   actor: ActorContext;
@@ -79,4 +91,32 @@ export interface TrackerRepository {
 
   getCandidateProfile(userId: string): Promise<CandidateProfile | null>;
   saveCandidateProfile(userId: string, command: CandidateProfileCommand): Promise<CandidateProfile>;
+}
+
+/**
+ * Watchlist repository contract (decision 018). Same owner-scoping rule as the tracker:
+ * every operation receives the owner explicitly.
+ */
+export interface WatchlistRepository {
+  listWatches(userId: string, query: WatchListQuery): Promise<Page<WatchedCompany>>;
+  getWatch(userId: string, watchId: string): Promise<WatchedCompany | null>;
+  listWatchActivity(
+    userId: string,
+    watchId: string,
+    page: PageRequest,
+  ): Promise<Page<WatchActivity>>;
+  searchCompanies(userId: string, text: string, limit: number): Promise<CompanyOption[]>;
+
+  createWatch(
+    ctx: MutationContext,
+    command: AddWatchedCompanyCommand,
+  ): Promise<WatchMutationResult>;
+  updateWatch(
+    ctx: MutationContext,
+    command: UpdateWatchedCompanyCommand,
+  ): Promise<WatchMutationResult>;
+  setWatchActive(
+    ctx: MutationContext,
+    command: SetCompanyWatchStatusCommand,
+  ): Promise<WatchMutationResult>;
 }

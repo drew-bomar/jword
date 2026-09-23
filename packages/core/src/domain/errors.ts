@@ -11,7 +11,12 @@ export const ERROR_CODES = [
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
-export type ConflictReason = "STALE_VERSION" | "REQUEST_ID_REUSED" | "DUPLICATE_CANDIDATES";
+export type ConflictReason =
+  | "STALE_VERSION"
+  | "REQUEST_ID_REUSED"
+  | "DUPLICATE_CANDIDATES"
+  | "ALREADY_WATCHED"
+  | "BOARD_ALREADY_WATCHED";
 
 export interface DuplicateCandidate {
   applicationId: string;
@@ -28,6 +33,10 @@ export interface JwordErrorDetails {
   rowIndex?: number;
   currentVersion?: number;
   expectedVersion?: number;
+  /** Watchlist conflicts: the existing watch, whether it is active, and its company. */
+  watchId?: string;
+  watchActive?: boolean;
+  company?: string;
 }
 
 /**

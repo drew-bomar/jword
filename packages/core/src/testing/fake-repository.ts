@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { creationDates, statusAppliedDate } from "../domain/date-policy";
-import type { ActivityType, ApplicationStatus } from "../domain/enums";
+import type { ActivityType, ApplicationStatus, AtsProvider } from "../domain/enums";
 import { JwordError, type DuplicateCandidate } from "../domain/errors";
 import { cleanText, normalizeName } from "../domain/normalize";
 import type {
@@ -15,7 +15,12 @@ import type {
 } from "../domain/types";
 import { findDuplicateCandidates, type DuplicateIndexEntry } from "../import/validate";
 import { decodeCursor, encodeCursor, filterKeyFor } from "../repositories/cursor";
-import type { MutationContext, PageRequest, TrackerRepository } from "../repositories/types";
+import type {
+  MutationContext,
+  PageRequest,
+  TrackerRepository,
+  WatchlistRepository,
+} from "../repositories/types";
 import type {
   AddApplicationNoteCommand,
   CandidateProfileCommand,
@@ -26,12 +31,46 @@ import type {
   UpdateApplicationNoteCommand,
   UpdateApplicationStatusCommand,
 } from "../validation/schemas";
+import { canonicalBoardUrl, isValidBoardIdentifier } from "../watchlist/boards";
+import type {
+  AddWatchedCompanyCommand,
+  SetCompanyWatchStatusCommand,
+  UpdateWatchedCompanyCommand,
+} from "../watchlist/schemas";
+import type {
+  CompanyOption,
+  SafeWatchValue,
+  WatchActivity,
+  WatchedCompany,
+  WatchListQuery,
+  WatchMutationResult,
+} from "../watchlist/types";
 
 interface CompanyRecord {
   id: string;
   userId: string;
   name: string;
   normalizedName: string;
+  websiteUrl?: string | null;
+  interestLevel?: number | null;
+  notes?: string | null;
+}
+
+interface WatchRecord {
+  id: string;
+  userId: string;
+  companyId: string;
+  active: boolean;
+  provider: AtsProvider;
+  boardIdentifier: string | null;
+  boardUrl: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WatchActivityRecord extends WatchActivity {
+  userId: string;
 }
 
 interface JobRecord {
@@ -77,7 +116,7 @@ interface ActivityRecord extends ApplicationActivity {
 interface Receipt {
   operation: string;
   fingerprint: string;
-  result: MutationResult;
+  result: MutationResult | WatchMutationResult;
 }
 
 const PRIORITY_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
@@ -87,7 +126,7 @@ const PRIORITY_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
  * receipts, duplicate candidates, no-ops, atomic activity). Used by unit tests and the
  * scripted MCP scenarios so business behavior can be exercised without a database.
  */
-export class FakeTrackerRepository implements TrackerRepository {
+export class FakeTrackerRepository implements TrackerRepository, WatchlistRepository {
   companies: CompanyRecord[] = [];
   jobs: JobRecord[] = [];
   applications: ApplicationRecord[] = [];
@@ -95,6 +134,8 @@ export class FakeTrackerRepository implements TrackerRepository {
   activities: ActivityRecord[] = [];
   receipts = new Map<string, Receipt>();
   profiles = new Map<string, CandidateProfile>();
+  watches: WatchRecord[] = [];
+  watchActivities: WatchActivityRecord[] = [];
   /** Test hook: throw inside the "transaction" after the primary write to prove rollback. */
   failBeforeActivity = false;
   private clockMs = Date.parse("2026-09-21T15:00:00Z");
@@ -275,7 +316,7 @@ export class FakeTrackerRepository implements TrackerRepository {
         },
       );
     }
-    return { ...receipt.result, replayed: true };
+    return { ...(receipt.result as MutationResult), replayed: true };
   }
 
   private finishRequest(
@@ -376,6 +417,8 @@ export class FakeTrackerRepository implements TrackerRepository {
       applications: structuredClone(this.applications),
       notes: structuredClone(this.notes),
       activities: structuredClone(this.activities),
+      watches: structuredClone(this.watches),
+      watchActivities: structuredClone(this.watchActivities),
       receipts: new Map(this.receipts),
     };
     try {
@@ -962,5 +1005,542 @@ export class FakeTrackerRepository implements TrackerRepository {
     };
     this.profiles.set(userId, profile);
     return profile;
+  }
+  // -------------------------------------------------------------- watchlist
+  private watchView(watch: WatchRecord): WatchedCompany {
+    const company = this.companies.find(
+      (c) => c.id === watch.companyId && c.userId === watch.userId,
+    )!;
+    const last = this.watchActivities
+      .filter((a) => a.userId === watch.userId && a.watchId === watch.id)
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0];
+    const applicationCount = this.applications.filter((a) => {
+      const job = this.jobs.find((j) => j.id === a.jobId && j.userId === a.userId);
+      return a.userId === watch.userId && job?.companyId === watch.companyId;
+    }).length;
+    return {
+      watchId: watch.id,
+      companyId: company.id,
+      company: company.name,
+      provider: watch.provider,
+      boardIdentifier: watch.boardIdentifier,
+      boardUrl: watch.boardUrl,
+      active: watch.active,
+      version: watch.version,
+      interestLevel: company.interestLevel ?? null,
+      websiteUrl: company.websiteUrl ?? null,
+      companyNotes: company.notes ?? null,
+      applicationCount,
+      lastEvent: last
+        ? {
+            type: last.type,
+            actorType: last.actorType,
+            summary: last.summary,
+            occurredAt: last.occurredAt,
+          }
+        : null,
+      createdAt: watch.createdAt,
+      updatedAt: watch.updatedAt,
+    };
+  }
+
+  async listWatches(userId: string, query: WatchListQuery): Promise<Page<WatchedCompany>> {
+    const { cursor, limit, ...filters } = query;
+    const filterKey = filterKeyFor({ ...filters, userId, watches: true });
+    const offset = decodeCursor(cursor, filterKey);
+    const text = query.text?.trim().toLowerCase();
+    const rows = this.watches
+      .filter((w) => w.userId === userId)
+      .map((w) => this.watchView(w))
+      .filter((w) => !text || w.company.toLowerCase().includes(text))
+      .filter((w) => query.active === undefined || w.active === query.active)
+      .filter((w) => !query.provider || w.provider === query.provider)
+      .sort((a, b) => a.company.localeCompare(b.company) || a.watchId.localeCompare(b.watchId));
+    const slice = rows.slice(offset, offset + limit + 1);
+    const hasMore = slice.length > limit;
+    return {
+      items: slice.slice(0, limit),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(offset + limit, filterKey) : null,
+    };
+  }
+
+  async getWatch(userId: string, watchId: string): Promise<WatchedCompany | null> {
+    const watch = this.watches.find((w) => w.userId === userId && w.id === watchId);
+    return watch ? this.watchView(watch) : null;
+  }
+
+  async listWatchActivity(
+    userId: string,
+    watchId: string,
+    page: PageRequest,
+  ): Promise<Page<WatchActivity>> {
+    const filterKey = filterKeyFor({ watchActivity: watchId, userId });
+    const offset = decodeCursor(page.cursor, filterKey);
+    const rows = this.watchActivities
+      .filter((a) => a.userId === userId && a.watchId === watchId)
+      .sort(
+        (a, b) =>
+          b.occurredAt.localeCompare(a.occurredAt) || a.activityId.localeCompare(b.activityId),
+      );
+    const slice = rows.slice(offset, offset + page.limit + 1);
+    const hasMore = slice.length > page.limit;
+    return {
+      items: slice.slice(0, page.limit).map(({ userId: _u, ...a }) => a),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(offset + page.limit, filterKey) : null,
+    };
+  }
+
+  async searchCompanies(userId: string, text: string, limit: number): Promise<CompanyOption[]> {
+    const needle = text.trim().toLowerCase();
+    return this.companies
+      .filter((c) => c.userId === userId && c.name.toLowerCase().includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .slice(0, limit)
+      .map((c) => {
+        const watch = this.watches.find((w) => w.userId === userId && w.companyId === c.id);
+        return {
+          companyId: c.id,
+          name: c.name,
+          watchId: watch?.id ?? null,
+          watchActive: watch ? watch.active : null,
+        };
+      });
+  }
+
+  private beginWatchRequest(
+    ctx: MutationContext,
+    requestId: string,
+    operation: string,
+    fp: string,
+  ): WatchMutationResult | null {
+    const receipt = this.receipts.get(`${ctx.actor.userId}:${requestId}`);
+    if (!receipt) return null;
+    if (receipt.operation !== operation || receipt.fingerprint !== fp) {
+      throw new JwordError(
+        "CONFLICT",
+        "This request id was already used for a different command.",
+        {
+          reason: "REQUEST_ID_REUSED",
+        },
+      );
+    }
+    return { ...(receipt.result as WatchMutationResult), replayed: true };
+  }
+
+  private finishWatchRequest(
+    ctx: MutationContext,
+    requestId: string,
+    operation: string,
+    fp: string,
+    result: WatchMutationResult,
+  ): WatchMutationResult {
+    this.receipts.set(`${ctx.actor.userId}:${requestId}`, { operation, fingerprint: fp, result });
+    return { ...result, replayed: false };
+  }
+
+  /** Mirrors jword.resolve_board_url(): the final board configuration and its stored URL. */
+  private resolveBoardUrl(
+    provider: AtsProvider,
+    identifier: string | null,
+    otherUrl: string | null,
+  ): string | null {
+    if (provider === "OTHER") {
+      if (identifier !== null) {
+        throw new JwordError(
+          "VALIDATION_ERROR",
+          "A board identifier applies only to Greenhouse, Lever, or Ashby.",
+          { reason: "BOARD_IDENTIFIER_NOT_ALLOWED" },
+        );
+      }
+      return otherUrl;
+    }
+    if (identifier === null) {
+      throw new JwordError("VALIDATION_ERROR", "This provider needs a board identifier.", {
+        reason: "BOARD_IDENTIFIER_REQUIRED",
+      });
+    }
+    if (!isValidBoardIdentifier(identifier)) {
+      throw new JwordError("VALIDATION_ERROR", "Board identifier has an invalid format.", {
+        reason: "BOARD_IDENTIFIER_INVALID",
+      });
+    }
+    if (otherUrl !== null) {
+      throw new JwordError(
+        "VALIDATION_ERROR",
+        "The board URL is set from the provider and identifier.",
+        { reason: "BOARD_URL_DERIVED" },
+      );
+    }
+    return canonicalBoardUrl(provider, identifier);
+  }
+
+  private assertBoardFree(
+    userId: string,
+    provider: AtsProvider,
+    identifier: string | null,
+    excludeWatchId: string | null,
+  ) {
+    if (identifier === null) return;
+    const clash = this.watches.find(
+      (w) =>
+        w.userId === userId &&
+        w.provider === provider &&
+        w.boardIdentifier?.toLowerCase() === identifier.toLowerCase() &&
+        w.id !== excludeWatchId,
+    );
+    if (clash) {
+      const company = this.companies.find((c) => c.id === clash.companyId)!.name;
+      throw new JwordError("CONFLICT", `This board is already watched for ${company}.`, {
+        reason: "BOARD_ALREADY_WATCHED",
+        watchId: clash.id,
+        company,
+      });
+    }
+  }
+
+  private lockWatch(userId: string, watchId: string, expectedVersion: number): WatchRecord {
+    const watch = this.watches.find((w) => w.userId === userId && w.id === watchId);
+    if (!watch)
+      throw new JwordError("NOT_FOUND", "Watched company not found.", {
+        reason: "WATCH_NOT_FOUND",
+      });
+    if (watch.version !== expectedVersion) {
+      throw new JwordError(
+        "CONFLICT",
+        "This watch changed since you opened it. Refresh before saving.",
+        { reason: "STALE_VERSION", currentVersion: watch.version, expectedVersion },
+      );
+    }
+    return watch;
+  }
+
+  /** Mirrors jword.apply_company_fields(). Notes text is never copied into before/after. */
+  private applyCompanyFields(
+    company: CompanyRecord,
+    command: {
+      interestLevel?: number | null;
+      websiteUrl?: string | null;
+      companyNotes?: string | null;
+    },
+  ) {
+    const changed: string[] = [];
+    const before: Record<string, SafeWatchValue> = {};
+    const after: Record<string, SafeWatchValue> = {};
+    if (
+      command.interestLevel !== undefined &&
+      command.interestLevel !== (company.interestLevel ?? null)
+    ) {
+      changed.push("interestLevel");
+      before.interestLevel = company.interestLevel ?? null;
+      after.interestLevel = command.interestLevel;
+      company.interestLevel = command.interestLevel;
+    }
+    if (command.websiteUrl !== undefined) {
+      const next = cleanText(command.websiteUrl);
+      if (next !== (company.websiteUrl ?? null)) {
+        changed.push("websiteUrl");
+        before.websiteUrl = company.websiteUrl ?? null;
+        after.websiteUrl = next;
+        company.websiteUrl = next;
+      }
+    }
+    if (command.companyNotes !== undefined) {
+      const next = cleanText(command.companyNotes);
+      if (next !== (company.notes ?? null)) {
+        changed.push("companyNotes");
+        company.notes = next;
+      }
+    }
+    return { changed, before, after };
+  }
+
+  private addWatchActivity(
+    userId: string,
+    watchId: string,
+    type: WatchActivity["type"],
+    actorType: WatchActivity["actorType"],
+    summary: string,
+    metadata: Record<string, unknown>,
+  ): WatchActivityRecord {
+    if (this.failBeforeActivity)
+      throw new JwordError("INTERNAL_ERROR", "Injected activity failure; transaction rolled back.");
+    const ts = this.now();
+    const record: WatchActivityRecord = {
+      activityId: randomUUID(),
+      userId,
+      watchId,
+      type,
+      actorType,
+      summary,
+      metadata,
+      occurredAt: ts,
+      createdAt: ts,
+    };
+    this.watchActivities.push(record);
+    return record;
+  }
+
+  private providerLabel(provider: AtsProvider): string {
+    return provider === "OTHER"
+      ? "no supported job board"
+      : provider.charAt(0) + provider.slice(1).toLowerCase();
+  }
+
+  async createWatch(
+    ctx: MutationContext,
+    command: AddWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const op = "create_company_watch";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginWatchRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const knownIds = new Set(this.companies.map((c) => c.id));
+      const company = this.resolveCompany(userId, command.company, command.companyId);
+      const companyCreated = !knownIds.has(company.id);
+      const current = this.watches.find((w) => w.userId === userId && w.companyId === company.id);
+      if (current) {
+        throw new JwordError(
+          "CONFLICT",
+          `${company.name} is already on your watchlist${current.active ? "" : " (inactive)"}.`,
+          {
+            reason: "ALREADY_WATCHED",
+            watchId: current.id,
+            watchActive: current.active,
+            currentVersion: current.version,
+          },
+        );
+      }
+      const identifier = cleanText(command.boardIdentifier);
+      const boardUrl = this.resolveBoardUrl(
+        command.provider,
+        identifier,
+        cleanText(command.boardUrl),
+      );
+      this.assertBoardFree(userId, command.provider, identifier, null);
+      const ts = this.now();
+      const watch: WatchRecord = {
+        id: randomUUID(),
+        userId,
+        companyId: company.id,
+        active: true,
+        provider: command.provider,
+        boardIdentifier: identifier,
+        boardUrl,
+        version: 1,
+        createdAt: ts,
+        updatedAt: ts,
+      };
+      this.watches.push(watch);
+      const companyChanges = this.applyCompanyFields(company, command);
+      const changedFields = [
+        "provider",
+        "boardIdentifier",
+        "boardUrl",
+        "active",
+        ...companyChanges.changed,
+      ];
+      const after = {
+        provider: watch.provider,
+        boardIdentifier: identifier,
+        boardUrl,
+        active: true,
+        ...companyChanges.after,
+      };
+      const summary = `Started watching ${company.name} (${this.providerLabel(watch.provider)})`;
+      const activity = this.addWatchActivity(
+        userId,
+        watch.id,
+        "WATCH_CREATED",
+        ctx.actor.actorType,
+        summary,
+        {
+          companyId: company.id,
+          companyCreated,
+          fields: changedFields,
+          before: companyChanges.before,
+          after,
+        },
+      );
+      return this.finishWatchRequest(ctx, command.requestId, op, fp, {
+        ok: true,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        noop: false,
+        watchId: watch.id,
+        companyId: company.id,
+        company: company.name,
+        companyCreated,
+        active: true,
+        version: 1,
+        activityId: activity.activityId,
+        summary,
+        changedFields,
+        before: companyChanges.before,
+        after,
+      });
+    });
+  }
+
+  async updateWatch(
+    ctx: MutationContext,
+    command: UpdateWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const op = "update_company_watch";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginWatchRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const watch = this.lockWatch(userId, command.watchId, command.expectedVersion);
+      const company = this.companies.find((c) => c.id === watch.companyId && c.userId === userId)!;
+      const provider = command.provider ?? watch.provider;
+      const identifier =
+        command.boardIdentifier !== undefined
+          ? cleanText(command.boardIdentifier)
+          : watch.boardIdentifier;
+      const otherUrl =
+        command.boardUrl !== undefined
+          ? cleanText(command.boardUrl)
+          : provider === "OTHER" && watch.provider === "OTHER"
+            ? watch.boardUrl
+            : null;
+      const boardUrl = this.resolveBoardUrl(provider, identifier, otherUrl);
+      const changedFields: string[] = [];
+      const before: Record<string, SafeWatchValue> = {};
+      const after: Record<string, SafeWatchValue> = {};
+      const track = (field: string, from: SafeWatchValue, to: SafeWatchValue) => {
+        if (from === to) return;
+        changedFields.push(field);
+        before[field] = from;
+        after[field] = to;
+      };
+      track("provider", watch.provider, provider);
+      track("boardIdentifier", watch.boardIdentifier, identifier);
+      track("boardUrl", watch.boardUrl, boardUrl);
+      if (changedFields.includes("provider") || changedFields.includes("boardIdentifier")) {
+        this.assertBoardFree(userId, provider, identifier, watch.id);
+      }
+      const companyChanges = this.applyCompanyFields(company, command);
+      changedFields.push(...companyChanges.changed);
+      Object.assign(before, companyChanges.before);
+      Object.assign(after, companyChanges.after);
+      const base = {
+        ok: true as const,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        watchId: watch.id,
+        companyId: company.id,
+        company: company.name,
+        active: watch.active,
+      };
+      if (!changedFields.length) {
+        return this.finishWatchRequest(ctx, command.requestId, op, fp, {
+          ...base,
+          noop: true,
+          version: watch.version,
+          activityId: null,
+          summary: "No changes to save.",
+          changedFields: [],
+          before: {},
+          after: {},
+        });
+      }
+      Object.assign(watch, {
+        provider,
+        boardIdentifier: identifier,
+        boardUrl,
+        version: watch.version + 1,
+        updatedAt: this.now(),
+      });
+      const summary = `Updated watch for ${company.name}`;
+      const activity = this.addWatchActivity(
+        userId,
+        watch.id,
+        "WATCH_UPDATED",
+        ctx.actor.actorType,
+        summary,
+        {
+          fields: changedFields,
+          before,
+          after,
+        },
+      );
+      return this.finishWatchRequest(ctx, command.requestId, op, fp, {
+        ...base,
+        noop: false,
+        version: watch.version,
+        activityId: activity.activityId,
+        summary,
+        changedFields,
+        before,
+        after,
+      });
+    });
+  }
+
+  async setWatchActive(
+    ctx: MutationContext,
+    command: SetCompanyWatchStatusCommand,
+  ): Promise<WatchMutationResult> {
+    const op = "set_company_watch_active";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginWatchRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const watch = this.lockWatch(userId, command.watchId, command.expectedVersion);
+      const company = this.companies.find((c) => c.id === watch.companyId && c.userId === userId)!;
+      const base = {
+        ok: true as const,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        watchId: watch.id,
+        companyId: company.id,
+        company: company.name,
+        active: command.active,
+      };
+      if (watch.active === command.active) {
+        return this.finishWatchRequest(ctx, command.requestId, op, fp, {
+          ...base,
+          noop: true,
+          version: watch.version,
+          activityId: null,
+          summary: `${company.name} is already ${command.active ? "active" : "inactive"}.`,
+          changedFields: [],
+          before: {},
+          after: {},
+        });
+      }
+      const before = { active: watch.active };
+      watch.active = command.active;
+      watch.version += 1;
+      watch.updatedAt = this.now();
+      const summary = `${command.active ? "Resumed" : "Stopped"} watching ${company.name}`;
+      const activity = this.addWatchActivity(
+        userId,
+        watch.id,
+        command.active ? "WATCH_ACTIVATED" : "WATCH_DEACTIVATED",
+        ctx.actor.actorType,
+        summary,
+        { fields: ["active"], before, after: { active: command.active } },
+      );
+      return this.finishWatchRequest(ctx, command.requestId, op, fp, {
+        ...base,
+        noop: false,
+        version: watch.version,
+        activityId: activity.activityId,
+        summary,
+        changedFields: ["active"],
+        before,
+        after: { active: command.active },
+      });
+    });
   }
 }

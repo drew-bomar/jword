@@ -44,6 +44,9 @@ export function mapDatabaseError(
           details.currentVersion = parsed.currentVersion;
         if (typeof parsed.expectedVersion === "number")
           details.expectedVersion = parsed.expectedVersion;
+        if (typeof parsed.watchId === "string") details.watchId = parsed.watchId;
+        if (typeof parsed.watchActive === "boolean") details.watchActive = parsed.watchActive;
+        if (typeof parsed.company === "string") details.company = parsed.company;
       } catch {
         // detail was not JSON; ignore
       }
