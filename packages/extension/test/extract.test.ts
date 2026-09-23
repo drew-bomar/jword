@@ -6,8 +6,8 @@ import { cleanJobUrl, extractPosting, mergeExtractions } from "../src/extract/in
 import { arrangementFrom } from "../src/extract/text";
 
 /** Fixtures are small hand-written pages that mirror each site's real markup (2026-09). */
-function capture(fixture: string, url: string) {
-  const html = readFileSync(new URL(`./fixtures/${fixture}`, import.meta.url), "utf8");
+function capture(fixture: string, url: string, edit: (html: string) => string = (html) => html) {
+  const html = edit(readFileSync(new URL(`./fixtures/${fixture}`, import.meta.url), "utf8"));
   const window = new Window({ url });
   window.document.write(html);
   const payload = extractPosting(window.document as unknown as Document, url);
@@ -75,6 +75,22 @@ describe("site extractors", () => {
     expect(p.description).toBe(
       "About Acme\n\nAcme builds finance tools.\n\n• Harden cloud accounts",
     );
+  });
+
+  it("Ashby: its own Location Type wins over JSON-LD that wrongly says remote", () => {
+    const url = "https://jobs.ashbyhq.com/norm-ai/366d4079-4842-469d-a5e0-3cc891a136b4";
+    expect(capture("ashby-hybrid.html", url)).toMatchObject({
+      company: "Norm Ai",
+      title: "Forward Deployed Engineer",
+      workArrangement: "HYBRID",
+    });
+    // Before the sidebar renders, the embedded app data still has it.
+    const withoutSidebar = (html: string) => {
+      const stripped = html.replace(/<h2>Location Type<\/h2>\s*<p>Hybrid<\/p>/, "");
+      expect(stripped).not.toBe(html);
+      return stripped;
+    };
+    expect(capture("ashby-hybrid.html", url, withoutSidebar).workArrangement).toBe("HYBRID");
   });
 
   it("Workday: tenant company flagged as a guess instead of the legal-entity JSON-LD name", () => {

@@ -52,7 +52,7 @@ Replace Drew's Google Sheet with a database-backed job tracker that Drew can edi
 - personalized job recommendations
 - automatic job discovery or scraping
 - automated job submission
-- Chrome/browser autofill extension (a capture-only extension that reads postings into jword was added in [decision 016](decisions/016-browser-extension-capture.md); filling application forms remains out of scope)
+- Chrome/browser autofill extension (a capture-only extension that reads postings into jword was added in [decision 016](decisions/016-browser-extension-capture.md) and moved into an in-page panel in [decision 017](decisions/017-extension-overlay-capture-api.md); filling application forms remains out of scope)
 - resume generation or tailoring
 - interview-preparation workspace
 - Gmail, Outlook, calendar, Slack, or notification integrations

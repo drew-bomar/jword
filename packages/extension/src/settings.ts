@@ -1,6 +1,6 @@
 export const DEFAULT_JWORD_URL = "http://localhost:3200";
 
-/** The jword origin (scheme + host + port) the capture window opens, e.g. http://localhost:3200. */
+/** The jword origin (scheme + host + port) the overlay talks to, e.g. http://localhost:3200. */
 export async function getJwordOrigin(): Promise<string> {
   const stored = await chrome.storage.sync.get("jwordUrl");
   return (
@@ -25,7 +25,7 @@ export function originPattern(origin: string): string {
   return `${url.protocol}//${url.hostname}/*`;
 }
 
-/** Session-storage key for the latest capture in a browser window. */
-export function captureKey(windowId: number): string {
-  return `capture:window:${windowId}`;
+/** Session-storage key for the capture shown in a tab's overlay. */
+export function captureKey(tabId: number): string {
+  return `capture:tab:${tabId}`;
 }

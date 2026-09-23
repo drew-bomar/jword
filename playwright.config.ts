@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { EXTENSION_ID } from "./tests/e2e/helpers/extension";
 import { loadTestEnv } from "./tests/test-env";
 
 loadTestEnv();
@@ -29,7 +30,7 @@ export default defineConfig({
     { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    env: { JWORD_E2E: "1", JWORD_OWNER_USER_ID: "" },
+    env: { JWORD_E2E: "1", JWORD_OWNER_USER_ID: "", JWORD_EXTENSION_ID: EXTENSION_ID },
     command: process.env.CI
       ? `pnpm exec next build && pnpm exec next start -p ${PORT}`
       : `pnpm exec next dev -p ${PORT}`,

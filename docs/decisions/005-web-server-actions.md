@@ -1,6 +1,7 @@
 # 005 - Use Server Actions for web mutations
 
-Status: Accepted by the owner on 2026-09-20.
+Status: Accepted by the owner on 2026-09-20. Amended by [decision 017](017-extension-overlay-capture-api.md):
+five origin-restricted Route Handlers under `/api/extension/` serve the capture extension only.
 
 ## Context
 

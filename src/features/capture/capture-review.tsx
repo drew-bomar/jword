@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useEffectEvent, useMemo, useState, useTransition } from "react";
 import {
   APPLICATION_PRIORITIES,
   APPLICATION_STATUSES,
@@ -32,17 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useReliableMutation } from "@/lib/mutations/use-reliable-mutation";
-import {
-  createApplicationAction,
-  findDuplicatesAction,
-  updateDetailsAction,
-} from "@/server/actions/applications";
-import { getCaptureTargetAction, searchCaptureTargetsAction } from "@/server/actions/capture";
 import type { ActionError } from "@/server/actions/result";
-import { useCaptureHandoff } from "./use-capture-handoff";
+import type { CaptureApi } from "./api";
 
 interface Draft {
   company: string;
@@ -129,45 +121,20 @@ function display(field: CaptureUpdateField, value: string | null): string {
   return value;
 }
 
-export function CaptureWorkspace({ embedded = false }: { embedded?: boolean }) {
-  const handoff = useCaptureHandoff();
-
-  if (handoff.phase === "waiting") {
-    return (
-      <div className="space-y-3" aria-busy="true">
-        <p className="text-muted-foreground text-sm">Waiting for the jword extension…</p>
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
-  if (handoff.phase === "missing") {
-    return (
-      <Alert>
-        <AlertTitle>No job posting received</AlertTitle>
-        <AlertDescription>
-          <p>
-            This page is opened by the jword browser extension. Open a job posting, then click the
-            jword button in the toolbar (or press Alt+Shift+J).
-          </p>
-          <p className="mt-2">
-            <Link
-              href="/applications/new"
-              target={embedded ? "_blank" : undefined}
-              className="underline"
-            >
-              Add an application manually
-            </Link>
-          </p>
-        </AlertDescription>
-      </Alert>
-    );
-  }
-  return <CaptureReview posting={handoff.posting} embedded={embedded} />;
-}
-
-function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedded: boolean }) {
+/**
+ * Review a captured posting, then add it or update an application the owner picks (decisions 016
+ * and 017). Rendered in the extension's in-page overlay; every read and save goes through `api`.
+ * `jwordUrl` is the tracker's origin, for links that open jword in a normal tab.
+ */
+export function CaptureReview({
+  posting,
+  api,
+  jwordUrl,
+}: {
+  posting: CapturedPosting;
+  api: CaptureApi;
+  jwordUrl: string;
+}) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(posting));
   const [candidates, setCandidates] = useState<TargetOption[] | null>(null);
   const [checkedKey, setCheckedKey] = useState<string | null>(null);
@@ -190,7 +157,7 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
   function checkMatches(forDraft: Draft) {
     if (!forDraft.company.trim() || !forDraft.title.trim()) return;
     startLookup(async () => {
-      const result = await findDuplicatesAction({
+      const result = await api.findDuplicates({
         company: forDraft.company,
         title: forDraft.title,
         jobUrl: orNull(forDraft.jobUrl),
@@ -215,12 +182,15 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
   }
 
   // Check for matches once, as soon as the posting arrives.
+  const checkPosting = useEffectEvent((arrived: CapturedPosting) =>
+    checkMatches(draftFrom(arrived)),
+  );
   useEffect(() => {
-    checkMatches(draftFrom(posting));
+    checkPosting(posting);
   }, [posting]);
 
   async function loadExisting(applicationId: string) {
-    const result = await getCaptureTargetAction({ applicationId });
+    const result = await api.getApplication({ applicationId });
     if (!result.ok) {
       setError(result.error);
       return null;
@@ -243,7 +213,7 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
     event.preventDefault();
     if (!searchText.trim()) return;
     startLookup(async () => {
-      const result = await searchCaptureTargetsAction({ text: searchText });
+      const result = await api.searchApplications({ text: searchText });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -302,7 +272,7 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
             // The owner saw these candidates and still chose a new application.
             allowDuplicate: reviewed || undefined,
           },
-          createApplicationAction,
+          api.createApplication,
         );
         if (!result.ok) {
           if (result.error.code === "CONFLICT" && result.error.reason === "DUPLICATE_CANDIDATES") {
@@ -335,7 +305,7 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
       if (!existing) return;
       const result = await save(
         { applicationId: existing.applicationId, expectedVersion: existing.version, ...patch },
-        updateDetailsAction,
+        api.updatePosting,
       );
       if (!result.ok) {
         if (result.error.code === "CONFLICT" && result.error.reason === "STALE_VERSION") {
@@ -368,20 +338,18 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
           <p>{done.message}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button asChild size="sm">
-              {/* In the side panel, open the record in a normal tab rather than inside the panel. */}
-              <Link
-                href={`/applications/${done.applicationId}`}
-                target={embedded ? "_blank" : undefined}
+              <a
+                href={`${jwordUrl}/applications/${done.applicationId}`}
+                target="_blank"
+                rel="noopener"
               >
                 Open application
-              </Link>
+              </a>
             </Button>
           </div>
-          {embedded ? (
-            <p className="text-muted-foreground mt-3 text-xs">
-              To capture another job, open its posting and click the jword button again.
-            </p>
-          ) : null}
+          <p className="text-muted-foreground mt-3 text-xs">
+            To capture another job, open its posting and click the jword button again.
+          </p>
         </AlertDescription>
       </Alert>
     );
@@ -424,7 +392,32 @@ function CaptureReview({ posting, embedded }: { posting: CapturedPosting; embedd
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       ) : null}
-      {error && !fieldErrors ? (
+      {error?.code === "UNAUTHENTICATED" ? (
+        <Alert role="alert">
+          <AlertTitle>Signed out of jword</AlertTitle>
+          <AlertDescription>
+            <p>Sign in to jword in a tab, then try again. This posting is kept.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button asChild size="sm">
+                <a href={`${jwordUrl}/sign-in`} target="_blank" rel="noopener">
+                  Sign in to jword
+                </a>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setError(null);
+                  checkMatches(draft);
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : error && !fieldErrors ? (
         <Alert variant="destructive" role="alert">
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
@@ -724,7 +717,9 @@ function UpdatePlan({
   onToggle: (field: CaptureUpdateField, checked: boolean) => void;
 }) {
   const changes = plan.filter((row) => row.selectable);
-  const unchanged = plan.filter((row) => !row.selectable);
+  // The posting says nothing here but the application has a value: a capture never clears it.
+  const kept = plan.filter((row) => row.change === "missing" && row.current !== null);
+  const unchanged = plan.filter((row) => !row.selectable && !kept.includes(row));
   return (
     <section aria-labelledby="update-heading" className="space-y-2">
       <h2 id="update-heading" className="text-sm font-semibold">
@@ -735,7 +730,7 @@ function UpdatePlan({
         you tick them. Status, priority, company, and role are never changed here.
       </p>
       {changes.length === 0 ? (
-        <p className="text-sm">This application already matches the posting.</p>
+        <p className="text-sm">Nothing in the posting would change this application.</p>
       ) : (
         <ul className="divide-y rounded-md border" data-testid="capture-plan">
           {changes.map((row) => {
@@ -768,6 +763,17 @@ function UpdatePlan({
           })}
         </ul>
       )}
+      {kept.length ? (
+        <ul className="bg-muted/40 divide-y rounded-md border" data-testid="capture-kept">
+          {kept.map((row) => (
+            <li key={row.field} className="p-3 text-sm">
+              <span className="font-medium">{FIELD_LABELS[row.field]}</span>: keeping{" "}
+              {display(row.field, row.current)}{" "}
+              <span className="text-muted-foreground text-xs">(not in posting)</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {unchanged.length ? (
         <p className="text-muted-foreground text-xs">
           Not changed:{" "}

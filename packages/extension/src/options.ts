@@ -15,8 +15,8 @@ form.addEventListener("submit", async (event) => {
     status.textContent = "Enter an http:// or https:// address, e.g. https://jword.example.com";
     return;
   }
-  // Access to the jword site lets the extension hand postings to its /capture page.
-  // Chrome asks the owner to confirm; nothing else on that site is read or changed.
+  // Access to the jword site lets the background worker call jword's capture API with the
+  // owner's session (decision 017). Chrome asks the owner to confirm.
   const granted = await chrome.permissions.request({ origins: [originPattern(origin)] });
   if (!granted) {
     status.textContent = "Permission was not granted, so the address was not saved.";
@@ -24,5 +24,5 @@ form.addEventListener("submit", async (event) => {
   }
   await chrome.storage.sync.set({ jwordUrl: origin });
   input.value = origin;
-  status.textContent = `Saved. Captures open ${origin}/capture.`;
+  status.textContent = `Saved. Captures are saved to ${origin}.`;
 });

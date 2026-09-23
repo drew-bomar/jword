@@ -22,5 +22,7 @@ export function serverEnv() {
     timeZone: resolveTimeZone(process.env.JWORD_TIMEZONE),
     /** Optional owner lock for the web app. */
     ownerUserId: process.env.JWORD_OWNER_USER_ID?.trim() || null,
+    /** The capture extension allowed to call /api/extension/* (decision 017). Unset: API off. */
+    extensionId: process.env.JWORD_EXTENSION_ID?.trim() || null,
   };
 }

@@ -1,7 +1,10 @@
 # 016 - Capture job postings with a browser extension
 
 Status: Accepted by the owner on 2026-09-22. Side panel and default status APPLIED adopted the same
-day after the owner tried the first (popup window) version.
+day after the owner tried the first (popup window) version. **The side panel, `/capture` page, and
+`postMessage` handoff are superseded by [decision 017](017-extension-overlay-capture-api.md)** (an
+in-page overlay with a narrow extension API). Extraction, the update rules, and the APPLIED default
+below still apply.
 
 ## Context
 

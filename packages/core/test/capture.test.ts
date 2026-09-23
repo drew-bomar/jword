@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildCapturePatch,
+  capturePostingUpdateSchema,
   normalizeCapturedPosting,
   planCaptureUpdate,
   type CaptureFieldValues,
@@ -158,5 +159,59 @@ describe("planCaptureUpdate", () => {
     const { app } = await existing();
     const plan = planCaptureUpdate(app, captured({ location: "Remote" }));
     expect(buildCapturePatch(plan, new Set())).toEqual({});
+  });
+});
+
+describe("capturePostingUpdateSchema (extension API boundary)", () => {
+  const ids = {
+    requestId: randomUUID(),
+    applicationId: randomUUID(),
+    expectedVersion: 3,
+  };
+
+  it("accepts posting fields only", () => {
+    const parsed = capturePostingUpdateSchema.safeParse({
+      ...ids,
+      location: " Remote - US ",
+      workArrangement: "REMOTE",
+      jobUrl: "https://jobs.lever.co/acme/1",
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.location).toBe("Remote - US");
+  });
+
+  it("rejects fields a capture must never change", () => {
+    for (const field of [
+      { status: "OFFER" },
+      { priority: "HIGH" },
+      { company: "Other" },
+      { title: "Other" },
+      { appliedAt: "2026-09-01" },
+      { companyId: randomUUID() },
+    ]) {
+      expect(
+        capturePostingUpdateSchema.safeParse({ ...ids, location: "X", ...field }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("never clears a field and needs at least one", () => {
+    expect(capturePostingUpdateSchema.safeParse({ ...ids, location: null }).success).toBe(false);
+    expect(capturePostingUpdateSchema.safeParse({ ...ids, description: "  " }).success).toBe(false);
+    expect(
+      capturePostingUpdateSchema.safeParse({ ...ids, workArrangement: "UNKNOWN" }).success,
+    ).toBe(false);
+    expect(capturePostingUpdateSchema.safeParse(ids).success).toBe(false);
+  });
+
+  it("requires the version and request id for retries and conflict checks", () => {
+    const { expectedVersion: _v, ...noVersion } = ids;
+    const { requestId: _r, ...noRequest } = ids;
+    expect(capturePostingUpdateSchema.safeParse({ ...noVersion, location: "X" }).success).toBe(
+      false,
+    );
+    expect(capturePostingUpdateSchema.safeParse({ ...noRequest, location: "X" }).success).toBe(
+      false,
+    );
   });
 });

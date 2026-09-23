@@ -2,7 +2,41 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
-## Browser extension capture (2026-09-22)
+## In-page capture overlay (2026-09-22)
+
+[Decision 017](decisions/017-extension-overlay-capture-api.md) replaces the side panel below with a
+Jobright-style panel drawn inside the job tab. The panel is an extension page inside a closed shadow
+root, pinned right and pushing the page over. It talks only to the background worker. The worker
+calls five origin-restricted JSON endpoints with the owner's normal cookie. A spike confirmed first
+that Chrome sends the SameSite=Lax cookie on the worker's fetch when the extension has host
+permission. It sends `Origin` only on POST, so every endpoint is POST.
+
+Runtime path: toolbar click → extractor + overlay host (job tab) → overlay frame (nonce) →
+`chrome.runtime` message → background worker → `POST /api/extension/*` → Origin check →
+`requireSession` → Zod → shared service → database function (record + activity + version +
+receipt in one transaction).
+
+Files worth understanding:
+
+- `src/server/extension-origin.ts` + `extension-api.ts`: the Origin check (the CSRF defense), then
+  session, then one service call per endpoint in `src/app/api/extension/*/route.ts`.
+- `packages/extension/src/background.ts`: capture, the nonce check on every overlay message, and
+  the only network path (`api.ts`, which turns a lost save into `OUTCOME_UNKNOWN`).
+- `packages/extension/src/overlay-host.ts`: closed shadow root, iframe, page push, and close.
+- `src/features/capture/capture-review.tsx`: the review UI, now taking a `CaptureApi`; bundled
+  into the extension with jword's UI kit and Tailwind theme (`packages/extension/build.mjs`).
+
+Owner setup: set `JWORD_EXTENSION_ID=bnjlbmpmikpggohfhmfpddeeokbjpkbk` in `.env.local` and in
+Vercel, restart, `pnpm ext:build`, and reload the unpacked extension. Its id changes because of
+the pinned key, so remove the old card and load it again.
+
+Verification: `pnpm check` (142 unit tests), `pnpm test:integration` (29; one failure on the first
+run after idle, then two clean reruns), `pnpm test:e2e` (31 passed, 11 intentional mobile skips),
+`pnpm mcp:build`, and `pnpm build --webpack` into `.next-e2e`. No hosted data was touched. Gaps:
+the hosted https origin was not exercised live (same Chrome host-permission rule as localhost). The
+overlay is not yet tested on live LinkedIn/Greenhouse pages; see MANUAL_VERIFICATION.md.
+
+## Browser extension capture (2026-09-22) — superseded in part by 017
 
 Branch `claude/extension-capture`, [decision 016](decisions/016-browser-extension-capture.md). A
 Chrome extension reads a job posting and opens jword's `/capture` page, where the owner reviews it

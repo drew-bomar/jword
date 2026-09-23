@@ -18,7 +18,7 @@ export function SignInForm({
   next = null,
 }: {
   initialError: string | null;
-  /** Where to go after signing in, e.g. /capture when the extension's window was redirected. */
+  /** Where to go after signing in: the page the owner originally asked for. */
   next?: string | null;
 }) {
   const router = useRouter();
