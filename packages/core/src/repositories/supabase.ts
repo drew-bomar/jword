@@ -26,6 +26,7 @@ import type {
 } from "../validation/schemas";
 import type {
   AddWatchedCompanyCommand,
+  DeleteWatchedCompanyCommand,
   SetCompanyWatchStatusCommand,
   UpdateWatchedCompanyCommand,
 } from "../watchlist/schemas";
@@ -158,7 +159,7 @@ function mapWatch(row: WatchRow): WatchedCompany {
 function mapWatchActivity(row: WatchActivityRow): WatchActivity {
   return {
     activityId: row.id,
-    watchId: row.watch_id,
+    watchId: row.original_watch_id,
     type: row.type,
     actorType: row.actor_type,
     summary: row.summary,
@@ -184,6 +185,7 @@ function asWatchResult(value: Json, operation: string): WatchMutationResult {
     companyId: String(raw.companyId ?? ""),
     company: String(raw.company ?? ""),
     ...(typeof raw.companyCreated === "boolean" ? { companyCreated: raw.companyCreated } : {}),
+    ...(raw.deleted === true ? { deleted: true } : {}),
     active: raw.active === true,
     version: typeof raw.version === "number" ? raw.version : 0,
     activityId: typeof raw.activityId === "string" ? raw.activityId : null,
@@ -531,7 +533,7 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
       .from("company_watch_activities")
       .select("*")
       .eq("user_id", userId)
-      .eq("watch_id", watchId)
+      .eq("original_watch_id", watchId)
       .order("occurred_at", { ascending: false })
       .order("created_at", { ascending: false })
       .order("id", { ascending: true })
@@ -582,7 +584,11 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
   }
 
   private async mutateWatch(
-    fn: "create_company_watch" | "update_company_watch" | "set_company_watch_active",
+    fn:
+      | "create_company_watch"
+      | "update_company_watch"
+      | "set_company_watch_active"
+      | "delete_company_watch",
     ctx: MutationContext,
     requestId: string,
     command: Record<string, unknown>,
@@ -611,6 +617,14 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
   ): Promise<WatchMutationResult> {
     const { requestId, ...rest } = command;
     return this.mutateWatch("update_company_watch", ctx, requestId, rest);
+  }
+
+  deleteWatch(
+    ctx: MutationContext,
+    command: DeleteWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const { requestId, ...rest } = command;
+    return this.mutateWatch("delete_company_watch", ctx, requestId, rest);
   }
 
   setWatchActive(

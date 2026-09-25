@@ -103,6 +103,7 @@ function success(result: WatchMutationResult): CallToolResult {
     companyId: result.companyId,
     company: result.company,
     ...(result.companyCreated !== undefined ? { companyCreated: result.companyCreated } : {}),
+    ...(result.deleted === true ? { deleted: true } : {}),
     active: result.active,
     version: result.version,
     summary: result.summary,
@@ -254,7 +255,7 @@ export function registerWatchlistTools(
     {
       title: "Set company watch status",
       description:
-        "Deactivate (active=false, 'remove from watchlist') or reactivate (active=true) one watch. Only the " +
+        "Deactivate (active=false, pause monitoring) or reactivate (active=true) one watch. Only the " +
         "watch's flag changes; the company, its applications, and all history are kept. Same state returns " +
         "noop=true. " +
         PROTOCOL,
@@ -266,6 +267,34 @@ export function registerWatchlistTools(
         return success(await services.setCompanyWatchStatus(args, actor));
       } catch (error) {
         return failure("set_company_watch_status", error, args.requestId);
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_watched_company",
+    {
+      title: "Delete watched company",
+      description:
+        "Delete one watch and its selected boards after the user explicitly confirms removal of that company. " +
+        "Preserves the company, applications, notes, and audit history. Re-adding creates a new watch. " +
+        "Use set_company_watch_status to pause monitoring instead. " +
+        PROTOCOL +
+        " Supply confirmed=true only with user confirmation. A stale version requires a fresh read and confirmation; " +
+        "retry a lost response using the identical command and requestId.",
+      inputSchema: z.strictObject({
+        requestId,
+        watchId,
+        expectedVersion,
+        confirmed: z.literal(true),
+      }),
+      annotations: { ...MUTATING, destructiveHint: true },
+    },
+    async (args) => {
+      try {
+        return success(await services.deleteWatchedCompany(args, actor));
+      } catch (error) {
+        return failure("delete_watched_company", error, args.requestId);
       }
     },
   );

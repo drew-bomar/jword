@@ -65,6 +65,8 @@ export interface WatchMutationResult {
   company: string;
   /** Creation only: true when the company row was created by this save. */
   companyCreated?: boolean;
+  /** True when this result confirms deletion; version is the final revision. */
+  deleted?: boolean;
   active: boolean;
   version: number;
   activityId: string | null;

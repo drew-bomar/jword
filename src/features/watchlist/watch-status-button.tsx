@@ -8,7 +8,7 @@ import { useReliableMutation } from "@/lib/mutations/use-reliable-mutation";
 import { setWatchStatusAction } from "@/server/actions/watchlist";
 
 /**
- * Deactivate ("remove from watchlist") or reactivate. Deactivation only flips the watch's
+ * Deactivate (pause monitoring) or reactivate. Deactivation only flips the watch's
  * active flag; the company, its applications, and all history stay. An unconfirmed save keeps
  * its original command and request ID until "Retry save" resolves it.
  */

@@ -20,6 +20,7 @@ const MUTATION_TOOLS = [
   "add_watched_company",
   "update_watched_company",
   "set_company_watch_status",
+  "delete_watched_company",
 ];
 
 describe("jword MCP tools", () => {
@@ -31,13 +32,15 @@ describe("jword MCP tools", () => {
     await h.close();
   });
 
-  it("lists exactly the sixteen approved tools with correct annotations and strict schemas", async () => {
+  it("lists exactly the seventeen approved tools with correct annotations and strict schemas", async () => {
     const { tools } = await h.client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([...READ_TOOLS, ...MUTATION_TOOLS].sort());
     for (const tool of tools) {
       const readOnly = READ_TOOLS.includes(tool.name);
       expect(tool.annotations?.readOnlyHint, tool.name).toBe(readOnly);
-      expect(tool.annotations?.destructiveHint, tool.name).toBe(false);
+      expect(tool.annotations?.destructiveHint, tool.name).toBe(
+        tool.name === "delete_watched_company",
+      );
       expect(
         (tool.inputSchema as { additionalProperties?: boolean }).additionalProperties,
         tool.name,

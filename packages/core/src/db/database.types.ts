@@ -257,33 +257,36 @@ export type Database = {
           created_at: string
           id: string
           metadata: Json
+          original_watch_id: string
           occurred_at: string
           summary: string
           type: Database["public"]["Enums"]["watch_event_type"]
           user_id: string
-          watch_id: string
+          watch_id: string | null
         }
         Insert: {
           actor_type: Database["public"]["Enums"]["actor_type"]
           created_at?: string
           id?: string
           metadata?: Json
+          original_watch_id: string
           occurred_at?: string
           summary: string
           type: Database["public"]["Enums"]["watch_event_type"]
           user_id: string
-          watch_id: string
+          watch_id?: string | null
         }
         Update: {
           actor_type?: Database["public"]["Enums"]["actor_type"]
           created_at?: string
           id?: string
           metadata?: Json
+          original_watch_id?: string
           occurred_at?: string
           summary?: string
           type?: Database["public"]["Enums"]["watch_event_type"]
           user_id?: string
-          watch_id?: string
+          watch_id?: string | null
         }
         Relationships: [
           {
@@ -596,6 +599,15 @@ export type Database = {
         Args: { p_command: Json; p_owner_id: string }
         Returns: Json
       }
+      delete_company_watch: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       set_company_watch_active: {
         Args: {
           p_actor: string
@@ -672,6 +684,7 @@ export type Database = {
         | "WATCH_UPDATED"
         | "WATCH_ACTIVATED"
         | "WATCH_DEACTIVATED"
+        | "WATCH_DELETED"
       work_arrangement: "UNKNOWN" | "REMOTE" | "HYBRID" | "ONSITE"
     }
     CompositeTypes: {
@@ -828,6 +841,7 @@ export const Constants = {
         "WATCH_UPDATED",
         "WATCH_ACTIVATED",
         "WATCH_DEACTIVATED",
+        "WATCH_DELETED",
       ],
       work_arrangement: ["UNKNOWN", "REMOTE", "HYBRID", "ONSITE"],
     },

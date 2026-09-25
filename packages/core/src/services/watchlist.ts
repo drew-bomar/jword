@@ -29,6 +29,7 @@ import {
   MAX_BOARDS_PER_WATCH,
   listWatchedCompaniesSchema,
   searchCompaniesSchema,
+  deleteWatchedCompanySchema,
   setCompanyWatchStatusSchema,
   updateWatchedCompanySchema,
   WATCHLIST_DEFAULT_LIMIT,
@@ -404,7 +405,15 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
       );
     },
 
-    /** Deactivate ("remove from watchlist") or reactivate. Deletes nothing. */
+    /** Delete the watch configuration, retaining the company, applications, and audit history. */
+    async deleteWatchedCompany(input: unknown, actor: ActorContext): Promise<WatchMutationResult> {
+      const command = parseOrThrow(deleteWatchedCompanySchema, input);
+      return run("delete_watched_company", actor, command.requestId, () =>
+        repository.deleteWatch(context(actor), command),
+      );
+    },
+
+    /** Deactivate or reactivate. Deletes nothing. */
     async setCompanyWatchStatus(input: unknown, actor: ActorContext): Promise<WatchMutationResult> {
       const command = parseOrThrow(setCompanyWatchStatusSchema, input);
       return run("set_company_watch_status", actor, command.requestId, () =>

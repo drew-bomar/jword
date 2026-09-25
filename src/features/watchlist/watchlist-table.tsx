@@ -15,6 +15,7 @@ import { InterestLevel, ProviderBadge, WatchStateBadge } from "./badges";
 import { SuggestFromApplicationsDialog } from "./suggest-dialog";
 import { AddWatchDialog, EditWatchDialog } from "./watch-dialogs";
 import { WatchStatusButton } from "./watch-status-button";
+import { DeleteWatchDialog } from "./delete-watch-dialog";
 
 function Boards({ watch }: { watch: WatchedCompany }) {
   if (!watch.boards.length) {
@@ -69,7 +70,7 @@ function LastChange({ watch }: { watch: WatchedCompany }) {
 
 function Actions({ watch }: { watch: WatchedCompany }) {
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex flex-wrap items-center justify-end gap-1">
       <EditWatchDialog watch={watch} />
       <WatchStatusButton
         watchId={watch.watchId}
@@ -77,6 +78,7 @@ function Actions({ watch }: { watch: WatchedCompany }) {
         active={watch.active}
         company={watch.company}
       />
+      <DeleteWatchDialog watch={watch} />
     </div>
   );
 }

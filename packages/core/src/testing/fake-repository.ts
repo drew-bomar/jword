@@ -37,6 +37,7 @@ import {
   MAX_BOARDS_PER_WATCH,
   type AddWatchedCompanyCommand,
   type BoardInput,
+  type DeleteWatchedCompanyCommand,
   type SetCompanyWatchStatusCommand,
   type UpdateWatchedCompanyCommand,
 } from "../watchlist/schemas";
@@ -1491,6 +1492,57 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
         activityId: activity.activityId,
         summary,
         changedFields,
+        before,
+        after,
+      });
+    });
+  }
+
+  async deleteWatch(
+    ctx: MutationContext,
+    command: DeleteWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const op = "delete_company_watch";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginWatchRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const watch = this.lockWatch(userId, command.watchId, command.expectedVersion);
+      const company = this.companies.find((c) => c.id === watch.companyId && c.userId === userId)!;
+      const summary = `Deleted watch for ${company.name}`;
+      const before = { active: watch.active, deleted: false };
+      const after = { active: false, deleted: true };
+      const activity = this.addWatchActivity(
+        userId,
+        watch.id,
+        "WATCH_DELETED",
+        ctx.actor.actorType,
+        summary,
+        {
+          fields: ["deleted"],
+          before,
+          after,
+          companyId: company.id,
+          boardsBefore: structuredClone(watch.boards),
+        },
+      );
+      this.watches = this.watches.filter((w) => w.id !== watch.id);
+      return this.finishWatchRequest(ctx, command.requestId, op, fp, {
+        ok: true,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        noop: false,
+        watchId: watch.id,
+        companyId: company.id,
+        company: company.name,
+        deleted: true,
+        active: false,
+        version: watch.version + 1,
+        activityId: activity.activityId,
+        summary,
+        changedFields: ["deleted"],
         before,
         after,
       });

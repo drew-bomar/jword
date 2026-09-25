@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { mapDatabaseError, toJwordError } from "../src/index";
 
 describe("safe outcome reporting", () => {
+  it("identifies missing RPC functions as setup failures without leaking server details", () => {
+    const error = mapDatabaseError(
+      { code: "PGRST202", message: "private function signature", details: "private schema" },
+      "delete_company_watch",
+      true,
+    );
+    expect(error.code).toBe("INTERNAL_ERROR");
+    expect(error.reason).toBe("DATABASE_FUNCTION_UNAVAILABLE");
+    expect(error.message).toContain("database update");
+    expect(error.message).not.toMatch(/private|unconfirmed|request ID/);
+  });
   it("does not claim rollback when the database response is lost", () => {
     const error = mapDatabaseError(
       { code: "", message: "fetch failed: private data" },

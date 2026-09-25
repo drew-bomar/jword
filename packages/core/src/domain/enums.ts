@@ -116,6 +116,7 @@ export const WATCH_EVENT_TYPES = [
   "WATCH_UPDATED",
   "WATCH_ACTIVATED",
   "WATCH_DEACTIVATED",
+  "WATCH_DELETED",
 ] as const;
 export type WatchEventType = (typeof WATCH_EVENT_TYPES)[number];
 

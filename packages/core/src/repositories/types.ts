@@ -22,6 +22,7 @@ import type {
 } from "../validation/schemas";
 import type {
   AddWatchedCompanyCommand,
+  DeleteWatchedCompanyCommand,
   SetCompanyWatchStatusCommand,
   UpdateWatchedCompanyCommand,
 } from "../watchlist/schemas";
@@ -116,6 +117,10 @@ export interface WatchlistRepository {
   updateWatch(
     ctx: MutationContext,
     command: UpdateWatchedCompanyCommand,
+  ): Promise<WatchMutationResult>;
+  deleteWatch(
+    ctx: MutationContext,
+    command: DeleteWatchedCompanyCommand,
   ): Promise<WatchMutationResult>;
   setWatchActive(
     ctx: MutationContext,

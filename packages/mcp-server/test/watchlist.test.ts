@@ -13,6 +13,36 @@ describe("jword MCP watchlist tools", () => {
   const add = (args: Record<string, unknown>) =>
     h.call("add_watched_company", { requestId: crypto.randomUUID(), ...args });
 
+  it("requires confirmation to delete, returns the deleted identity, and preserves CODEX audit history", async () => {
+    const created = await add({ company: "Delete me" });
+    const command = {
+      requestId: crypto.randomUUID(),
+      watchId: created.body.watchId,
+      expectedVersion: 1,
+    };
+    const rejected = await h.client.callTool({
+      name: "delete_watched_company",
+      arguments: command,
+    });
+    expect(rejected.isError).toBe(true);
+    expect(h.repo.watches).toHaveLength(1);
+    const deleted = await h.call("delete_watched_company", { ...command, confirmed: true });
+    expect(deleted.body).toMatchObject({
+      ok: true,
+      deleted: true,
+      watchId: created.body.watchId,
+      company: "Delete me",
+    });
+    expect(h.repo.watches).toHaveLength(0);
+    expect(h.repo.watchActivities.at(-1)).toMatchObject({
+      type: "WATCH_DELETED",
+      actorType: "CODEX",
+    });
+    expect(
+      (await h.call("delete_watched_company", { ...command, confirmed: true })).body,
+    ).toMatchObject({ replayed: true });
+  });
+
   it("adds, lists, updates, and deactivates with CODEX as the actor", async () => {
     const created = await add({
       company: "Stripe",

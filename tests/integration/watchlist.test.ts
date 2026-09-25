@@ -166,6 +166,7 @@ describe("company watchlist: permissions, integrity, and atomicity", () => {
     const del = await owner.client.from("company_watches").delete().eq("id", watchId);
     expect(denied(del.error)).toBe(true);
     const forged = await owner.client.from("company_watch_activities").insert({
+      original_watch_id: watchId,
       user_id: owner.id,
       watch_id: watchId,
       type: "WATCH_DEACTIVATED",

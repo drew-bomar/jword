@@ -11,6 +11,7 @@ export function createMutationAttempt() {
       input: Record<string, unknown>,
       perform: (command: Record<string, unknown>) => Promise<ActionResult<T>>,
     ): Promise<ActionResult<T>> {
+      const retryingUnconfirmed = command !== null;
       command ??= { ...structuredClone(input), requestId: crypto.randomUUID() };
       let result: ActionResult<T>;
       try {
@@ -18,9 +19,19 @@ export function createMutationAttempt() {
       } catch {
         result = { ok: false, error: { code: "OUTCOME_UNKNOWN", message: UNCONFIRMED_MESSAGE } };
       }
-      if (result.ok || !["OUTCOME_UNKNOWN", "INTERNAL_ERROR"].includes(result.error.code)) {
+      const rejectedBeforeExecution =
+        !result.ok &&
+        result.error.code === "INTERNAL_ERROR" &&
+        result.error.reason === "DATABASE_FUNCTION_UNAVAILABLE";
+      if (
+        result.ok ||
+        !["OUTCOME_UNKNOWN", "INTERNAL_ERROR"].includes(result.error.code) ||
+        (rejectedBeforeExecution && !retryingUnconfirmed)
+      ) {
         command = null;
       }
+      // A missing function on a retry says nothing about an earlier lost response.
+      // Retain that original attempt until its outcome can actually be confirmed.
       return result;
     },
     get unresolved() {

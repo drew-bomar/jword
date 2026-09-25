@@ -37,3 +37,14 @@ export async function setWatchStatusAction(
     return result;
   });
 }
+
+export async function deleteWatchAction(
+  input: unknown,
+): Promise<ActionResult<WatchMutationResult>> {
+  return runAction(async () => {
+    const session = await requireSession();
+    const result = await servicesFor(session).deleteWatchedCompany(input, session.actor);
+    revalidatePath("/watchlist");
+    return result;
+  });
+}

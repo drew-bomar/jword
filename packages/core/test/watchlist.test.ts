@@ -121,6 +121,47 @@ describe("watchlist schemas", () => {
   });
 });
 
+describe("watch deletion", () => {
+  it("requires explicit confirmation and the current version; preserves data and supports safe replay", async () => {
+    const watch = await add({ companyNotes: "Keep these notes" });
+    const command = { requestId: randomUUID(), watchId: watch.watchId, expectedVersion: 1 };
+    await expectError(services.deleteWatchedCompany(command, OWNER), "VALIDATION_ERROR");
+    await expectError(
+      services.deleteWatchedCompany({ ...command, confirmed: false }, OWNER),
+      "VALIDATION_ERROR",
+    );
+    await expectError(
+      services.deleteWatchedCompany({ ...command, confirmed: true }, OTHER),
+      "NOT_FOUND",
+    );
+    await expectError(
+      services.deleteWatchedCompany({ ...command, expectedVersion: 2, confirmed: true }, OWNER),
+      "CONFLICT",
+      "STALE_VERSION",
+    );
+    expect(repo.watches).toHaveLength(1);
+    const deleted = await services.deleteWatchedCompany({ ...command, confirmed: true }, CODEX);
+    expect(deleted).toMatchObject({ deleted: true, watchId: watch.watchId, version: 2 });
+    expect(repo.watches).toHaveLength(0);
+    expect(repo.companies[0]?.notes).toBe("Keep these notes");
+    expect(repo.watchActivities.filter((a) => a.type === "WATCH_DELETED")).toHaveLength(1);
+    const replacement = await add();
+    expect(replacement.watchId).not.toBe(watch.watchId);
+    expect(
+      await services.deleteWatchedCompany({ ...command, confirmed: true }, CODEX),
+    ).toMatchObject({ replayed: true, watchId: watch.watchId });
+    expect(repo.watches).toHaveLength(1);
+    await expectError(
+      services.deleteWatchedCompany(
+        { ...command, watchId: replacement.watchId, confirmed: true },
+        CODEX,
+      ),
+      "CONFLICT",
+      "REQUEST_ID_REUSED",
+    );
+  });
+});
+
 describe("watchlist services", () => {
   it("adds a new company with a derived board URL and an audit row", async () => {
     const result = await add({ interestLevel: 4, companyNotes: "payments infra" });

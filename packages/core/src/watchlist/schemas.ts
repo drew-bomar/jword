@@ -179,6 +179,14 @@ export const setCompanyWatchStatusSchema = z.strictObject({
 });
 export type SetCompanyWatchStatusCommand = z.infer<typeof setCompanyWatchStatusSchema>;
 
+export const deleteWatchedCompanySchema = z.strictObject({
+  requestId: requestIdSchema,
+  watchId: uuidSchema,
+  expectedVersion: versionSchema,
+  confirmed: z.literal(true, { error: "Confirm deleting this watch." }),
+});
+export type DeleteWatchedCompanyCommand = z.infer<typeof deleteWatchedCompanySchema>;
+
 export const listWatchedCompaniesSchema = z.strictObject({
   text: z.string().trim().max(200).optional(),
   active: z.boolean().optional(),
