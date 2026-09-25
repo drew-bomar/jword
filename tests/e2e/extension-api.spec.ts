@@ -91,3 +91,56 @@ test("updates only posting fields, with version checks and identical-retry repla
   await page.goto(detailUrl);
   await expect(page.getByTestId("activity").filter({ hasText: "Details updated" })).toHaveCount(1);
 });
+
+test("watch endpoints require extension origin and session, verify narrowly, and replay safely", async ({
+  page,
+  baseURL,
+}) => {
+  const anonymous = await playwrightRequest.newContext({ baseURL });
+  for (const endpoint of ["search-companies", "verify-boards", "add-watch"]) {
+    expect(
+      (
+        await page.request.post(`/api/extension/${endpoint}`, json("https://evil.example", {}))
+      ).status(),
+    ).toBe(403);
+    expect(
+      (await anonymous.post(`/api/extension/${endpoint}`, json(EXTENSION_ORIGIN, {}))).status(),
+    ).toBe(401);
+  }
+  await anonymous.dispose();
+  const post = (endpoint: string, data: unknown) =>
+    page.request.post(`/api/extension/${endpoint}`, json(EXTENSION_ORIGIN, data));
+  const boardUrls = ["https://acme.wd5.myworkdayjobs.com/External"];
+  expect(
+    (await post("verify-boards", { company: "Acme", boardUrls, mode: "discover" })).status(),
+  ).toBe(400);
+  expect(
+    (
+      await post("verify-boards", { company: "Acme", boardUrls: ["https://example.com/careers"] })
+    ).status(),
+  ).toBe(400);
+  const verified = await (await post("verify-boards", { company: "Acme", boardUrls })).json();
+  expect(verified).toMatchObject({
+    ok: true,
+    data: {
+      candidates: [],
+      ownershipChecked: true,
+      suggestions: [{ provider: "WORKDAY", verification: "found" }],
+    },
+  });
+  const command = {
+    requestId: randomUUID(),
+    company: "Acme",
+    boards: [{ provider: "WORKDAY", boardIdentifier: "acme/wd5/External" }],
+  };
+  expect((await post("add-watch", { ...command, userId: randomUUID() })).status()).toBe(400);
+  const first = await (await post("add-watch", command)).json();
+  const replay = await (await post("add-watch", command)).json();
+  expect(first).toMatchObject({ ok: true, data: { company: "Acme", version: 1 } });
+  expect(replay).toMatchObject({
+    ok: true,
+    data: { watchId: first.data.watchId, replayed: true, version: 1 },
+  });
+  const conflict = await (await post("add-watch", { ...command, requestId: randomUUID() })).json();
+  expect(conflict).toMatchObject({ ok: false, error: { reason: "ALREADY_WATCHED" } });
+});

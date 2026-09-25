@@ -3,11 +3,16 @@ import type { ActionResult } from "@/server/actions/result";
 /** Transport failures are retryable read errors, never an indefinitely spinning control. */
 export async function readWatchlist<T>(
   endpoint: "boards" | "companies" | "suggestions",
-  input: Record<string, string> = {},
+  input: Record<string, string | string[]> = {},
   signal?: AbortSignal,
 ): Promise<ActionResult<T>> {
   try {
-    const response = await fetch(`/api/watchlist/${endpoint}?${new URLSearchParams(input)}`, {
+    const query = new URLSearchParams(
+      Object.entries(input).flatMap(([key, value]) =>
+        (Array.isArray(value) ? value : [value]).map((item) => [key, item]),
+      ),
+    );
+    const response = await fetch(`/api/watchlist/${endpoint}?${query}`, {
       signal,
       cache: "no-store",
       credentials: "same-origin",

@@ -19,7 +19,7 @@ export type ProbeOutcome =
   | { status: "missing" }
   | { status: "error" };
 
-/** Reads public board APIs. The real one lives in ./directory; tests use a fake. */
+/** Reads public board endpoints. The real one lives in ./directory; tests use a fake. */
 export interface BoardDirectory {
   probe(
     provider: SupportedBoardProvider,
@@ -34,6 +34,7 @@ export interface BoardSuggestion {
   boardIdentifier: string;
   boardUrl: string;
   confidence: BoardConfidence;
+  verification: ProbeOutcome["status"];
   reasons: string[];
   boardName: string | null;
   openJobs: number | null;
@@ -41,6 +42,8 @@ export interface BoardSuggestion {
   sampleTitles: string[];
   /** A saved application's job URL points at this board. */
   fromApplications: boolean;
+  /** The owner supplied this board's link to be checked. */
+  requested: boolean;
   /** Already watched for a company (possibly this one). */
   watchedBy: { watchId: string; company: string } | null;
 }

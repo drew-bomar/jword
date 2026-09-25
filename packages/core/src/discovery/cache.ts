@@ -1,3 +1,4 @@
+import { boardKey } from "../watchlist/schemas";
 import { untilAborted } from "./cancellation";
 import type { BoardDirectory, ProbeOutcome } from "./types";
 
@@ -63,7 +64,7 @@ export function createCachedBoardDirectory(
   return {
     async probe(provider, identifier, signal) {
       if (signal?.aborted) return { status: "error" };
-      const key = `${provider}:${identifier}`;
+      const key = boardKey({ provider, boardIdentifier: identifier });
       const saved = cache.get(key);
       if (saved && saved.expires > Date.now()) return saved.result;
       cache.delete(key);

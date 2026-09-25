@@ -64,6 +64,7 @@ describe("boardNameCandidates", () => {
 
 describe("rateBoard", () => {
   const base = {
+    provider: "ASHBY" as const,
     company: "Notion",
     companyWebsite: null,
     boardIdentifier: "notion",
@@ -326,7 +327,11 @@ describe("board discovery services", () => {
     await job("Datadog", "https://boards.greenhouse.io/datadog/jobs/2");
     await job("Ramp", "https://jobs.ashbyhq.com/ramp/abc");
     await job("Ramp", "https://jobs.lever.co/ramp/xyz");
-    await job("Workday Co", "https://workday.wd5.myworkdayjobs.com/x");
+    await job(
+      "Workday Co",
+      "https://workdayco.wd5.myworkdayjobs.com/en-US/External/job/Austin/Engineer_JR1",
+    );
+    await job("Custom Careers", "https://careers.custom.example/jobs/1");
     await job("Watched", "https://jobs.lever.co/watched/1");
     await services.addWatchedCompany({ requestId: randomUUID(), company: "Watched" }, OWNER);
 
@@ -340,6 +345,7 @@ describe("board discovery services", () => {
     ).toEqual([
       ["Datadog", 2, ["GREENHOUSE:datadog"]],
       ["Ramp", 2, ["ASHBY:ramp", "LEVER:ramp"]],
+      ["Workday Co", 1, ["WORKDAY:workdayco/wd5/External"]],
     ]);
     expect(directory.calls).toEqual([]);
   });

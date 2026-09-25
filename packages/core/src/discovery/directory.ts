@@ -1,5 +1,9 @@
 import * as z from "zod";
-import { isValidBoardIdentifier, type SupportedBoardProvider } from "../watchlist/boards";
+import {
+  isValidBoardIdentifier,
+  parseWorkdayIdentifier,
+  type SupportedBoardProvider,
+} from "../watchlist/boards";
 import type { BoardDirectory, ProbeOutcome } from "./types";
 
 type Fetch = typeof fetch;
@@ -31,6 +35,15 @@ const ashbyJobs = z.object({ jobBoard: z.object({ jobPostings: z.array(z.object(
 const publicAshbyJobs = z.object({
   jobs: z.array(z.object({ title, isListed: z.boolean().optional() })),
 });
+const workdayJobs = z.object({
+  total: z.number().int().nonnegative(),
+  jobPostings: z.array(z.object({ title })),
+});
+/**
+ * Workday reports at most this many jobs; NVIDIA's board showed exactly 2000 on 2026-09-24,
+ * so a total at the cap is a lower bound, not a count.
+ */
+export const WORKDAY_REPORTED_TOTAL_CAP = 2000;
 const graphqlResponse = z.object({
   data: z.record(z.string(), z.unknown()),
   errors: z.array(z.unknown()).optional(),
@@ -98,9 +111,10 @@ function decodeEntities(value: string): string {
 }
 
 /**
- * Reads the public, unauthenticated board APIs of Greenhouse, Lever, and Ashby. Only these
- * fixed hosts are contacted; the board name is pattern-checked and URL-encoded, so a caller
- * cannot point it anywhere else. Nothing is stored. Any failure becomes `{ status: "error" }`.
+ * Reads the public, unauthenticated board endpoints of Greenhouse, Lever, Ashby, and Workday.
+ * Only these providers' hosts are contacted; the identifier is pattern-checked and URL-encoded,
+ * so a caller cannot point it anywhere else. Nothing is stored. Redirects are refused. Any
+ * failure becomes `{ status: "error" }`.
  *
  * - Greenhouse: boards-api.greenhouse.io (documented) gives the board's company name and job count.
  * - Lever: api.lever.co (documented) gives existence and a page of postings; the hosted page's
@@ -109,6 +123,10 @@ function decodeEntities(value: string): string {
  *   name and website plus posting titles in a few KB, instead of the documented posting API's
  *   multi-megabyte descriptions. Contract failures fall back to the documented posting API within
  *   the same byte/time limits, without claiming name or website evidence.
+ * - Workday: the JSON endpoint behind {account}.{cluster}.myworkdayjobs.com pages (undocumented,
+ *   decision 022). One small first page gives the reported total and sample titles; the host is
+ *   built only from the validated account and cluster, so it is always under myworkdayjobs.com.
+ *   Workday shows no company name. Only 404 means missing; any other failure is unverified.
  */
 export function createPublicBoardDirectory(
   options: PublicBoardDirectoryOptions = {},
@@ -276,6 +294,38 @@ export function createPublicBoardDirectory(
     };
   }
 
+  async function workday(id: string, signal: AbortSignal): Promise<ProbeOutcome> {
+    const board = parseWorkdayIdentifier(id);
+    if (!board) return { status: "missing" };
+    const { account, cluster, site } = board;
+    const raw = await json(
+      `https://${account}.${cluster}.myworkdayjobs.com/wday/cxs/${encodeURIComponent(account)}/${encodeURIComponent(site)}/jobs`,
+      signal,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        // Only the first page reports a total; later pages report 0.
+        body: JSON.stringify({
+          appliedFacets: {},
+          limit: SAMPLE_TITLES,
+          offset: 0,
+          searchText: "",
+        }),
+      },
+    );
+    if (raw === undefined) return { status: "missing" };
+    const page = workdayJobs.parse(raw);
+    const openJobs = Math.max(page.total, page.jobPostings.length);
+    return {
+      status: "found",
+      boardName: null,
+      website: null,
+      openJobs,
+      openJobsAtLeast: openJobs >= WORKDAY_REPORTED_TOTAL_CAP,
+      sampleTitles: titlesFrom(page.jobPostings),
+    };
+  }
+
   const probes: Record<
     SupportedBoardProvider,
     (id: string, signal: AbortSignal) => Promise<ProbeOutcome>
@@ -283,11 +333,12 @@ export function createPublicBoardDirectory(
     GREENHOUSE: greenhouse,
     LEVER: lever,
     ASHBY: ashby,
+    WORKDAY: workday,
   };
 
   return {
     async probe(provider, identifier, callerSignal) {
-      if (!isValidBoardIdentifier(identifier)) return { status: "missing" };
+      if (!isValidBoardIdentifier(provider, identifier)) return { status: "missing" };
       try {
         const timeout = AbortSignal.timeout(timeoutMs);
         const signal = callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;

@@ -147,7 +147,8 @@ export function SuggestFromApplicationsDialog() {
         ) : suggestions && suggestions.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             No suggestions. Either every company you applied to is already watched, or their saved
-            job links are not on Greenhouse, Lever, or Ashby. Use Add company to look them up.
+            job links are not on Greenhouse, Lever, Ashby, or Workday. Use Add company to look them
+            up.
           </p>
         ) : suggestions ? (
           <div className="space-y-4">

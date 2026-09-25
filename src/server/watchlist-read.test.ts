@@ -39,3 +39,19 @@ it("passes the verified session, raw input, and cancellation to the shared servi
   expect(await response.json()).toEqual({ ok: true, data: { suggestions: [] } });
   expect(response.headers.get("cache-control")).toBe("private, no-store");
 });
+
+it("passes a repeated query key as a list and a single one as a string", async () => {
+  vi.mocked(requireSession).mockResolvedValue({
+    actor: { userId: "owner", actorType: "USER" },
+  } as Awaited<ReturnType<typeof requireSession>>);
+  const service = vi.fn(async (..._args: Parameters<Parameters<typeof watchlistRead>[0]>) => ({}));
+  await watchlistRead(service)(
+    new Request(
+      "http://localhost/api/watchlist/boards?company=NVIDIA&boardUrls=https%3A%2F%2Fa&boardUrls=https%3A%2F%2Fb",
+    ),
+  );
+  expect(service.mock.calls[0]![1]).toEqual({
+    company: "NVIDIA",
+    boardUrls: ["https://a", "https://b"],
+  });
+});

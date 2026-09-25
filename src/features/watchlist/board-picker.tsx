@@ -5,6 +5,8 @@ import { ExternalLinkIcon, Loader2Icon, SearchIcon, XIcon } from "lucide-react";
 import {
   ATS_PROVIDER_LABELS,
   boardKey,
+  recognizedBoardKey,
+  selectWatchBoard,
   inferBoardFromUrl,
   MAX_BOARDS_PER_WATCH,
   type BoardConfidence,
@@ -50,13 +52,15 @@ function jobsLabel(s: BoardSuggestion): string | null {
 type SearchState =
   | { kind: "idle" }
   | { kind: "searching"; company: string }
-  | { kind: "done"; result: BoardDiscoveryResult }
+  | { kind: "done"; result: BoardDiscoveryResult; mode: "discover" | "verify" }
   | { kind: "failed"; message: string };
 
 /**
  * Finds and selects up to three job boards for a company. Lookups start by themselves once a
  * company name is entered (after typing pauses) and can be re-run; strong matches are ticked
- * until the owner changes the selection. Boards can also be added from a pasted URL.
+ * until the owner changes the selection. Boards can also be added from a pasted URL; a pasted
+ * or previously saved board is checked too. Workday also comes from saved application and
+ * direct website-field links, never company-name guesses.
  */
 export function BoardPicker({
   company,
@@ -83,6 +87,7 @@ export function BoardPicker({
   const [manualUrl, setManualUrl] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
   const sequence = useRef(0);
+  const autoSearchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const request = useRef<AbortController | null>(null);
   // Latest values for the async search callback, which outlives the render that started it.
   const selectedRef = useRef(selected);
@@ -97,8 +102,23 @@ export function BoardPicker({
   const name = company.trim();
   const website = /^https?:\/\/\S+$/i.test(websiteUrl.trim()) ? websiteUrl.trim() : undefined;
 
-  async function search() {
+  /**
+   * Selected boards (plus one just added, before the parent re-renders) are always checked, so
+   * pasted and saved boards keep their evidence in the list. Careers pages are never fetched.
+   */
+  function boardUrlsToCheck(added: WatchBoard[]): string[] {
+    const urls: string[] = [];
+    for (const board of [...selectedRef.current, ...added]) {
+      if (board.provider !== "OTHER" && !urls.includes(board.boardUrl)) urls.push(board.boardUrl);
+    }
+    return urls.slice(0, MAX_BOARDS_PER_WATCH);
+  }
+
+  async function search(added: WatchBoard[] = [], mode: "discover" | "verify" = "discover") {
     if (disabledRef.current || (name.length < 2 && !companyId)) return;
+    clearTimeout(autoSearchTimer.current);
+    const boardUrls =
+      mode === "verify" ? added.map((board) => board.boardUrl) : boardUrlsToCheck(added);
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -109,6 +129,8 @@ export function BoardPicker({
       {
         ...(companyId ? { companyId } : { company: name }),
         ...(website ? { websiteUrl: website } : {}),
+        ...(boardUrls.length ? { boardUrls } : {}),
+        mode,
       },
       controller.signal,
     );
@@ -117,13 +139,13 @@ export function BoardPicker({
       setState({ kind: "failed", message: result.error.message });
       return;
     }
-    setState({ kind: "done", result: result.data });
+    setState({ kind: "done", result: result.data, mode });
     if (!touchedRef.current && !disabledRef.current && result.data.ownershipChecked) {
       const keep = selectedRef.current;
       const strong = result.data.suggestions
         .filter((s) => s.confidence === "high" && !takenElsewhere(s))
         .map(toBoard)
-        .filter((b) => !keep.some((k) => boardKey(k) === boardKey(b)));
+        .filter((b) => !keep.some((k) => recognizedBoardKey(k) === recognizedBoardKey(b)));
       onChange([...keep, ...strong].slice(0, MAX_BOARDS_PER_WATCH));
     }
   }
@@ -134,12 +156,12 @@ export function BoardPicker({
 
   // Look up boards by themselves once typing pauses; the effect only talks to the server.
   useEffect(() => {
-    const handle =
+    autoSearchTimer.current =
       autoSearch && !disabled && (name.length >= 2 || companyId)
         ? setTimeout(() => void search(), 800)
         : undefined;
     return () => {
-      clearTimeout(handle);
+      clearTimeout(autoSearchTimer.current);
       request.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,10 +171,11 @@ export function BoardPicker({
   const isSelected = (b: WatchBoard) => selected.some((s) => boardKey(s) === boardKey(b));
 
   function toggle(board: WatchBoard, on: boolean) {
+    touchedRef.current = true;
     setTouched(true);
     onChange(
       on
-        ? [...selected, board].slice(0, MAX_BOARDS_PER_WATCH)
+        ? selectWatchBoard(selected, board).slice(0, MAX_BOARDS_PER_WATCH)
         : selected.filter((s) => boardKey(s) !== boardKey(board)),
     );
   }
@@ -178,12 +201,14 @@ export function BoardPicker({
       setManualError("That board is already selected.");
       return;
     }
-    if (full) {
+    if (full && !selected.some((item) => recognizedBoardKey(item) === recognizedBoardKey(board))) {
       setManualError(`A company can have at most ${MAX_BOARDS_PER_WATCH} boards.`);
       return;
     }
     toggle(board, true);
     setManualUrl("");
+    // Check the pasted board with the provider. Careers pages are kept but never fetched.
+    if (board.provider !== "OTHER") void search([board], "verify");
   }
 
   const suggestions = state.kind === "done" ? state.result.suggestions : [];
@@ -194,8 +219,8 @@ export function BoardPicker({
         <div>
           <h3 className="text-sm font-medium">Job boards</h3>
           <p className="text-muted-foreground text-xs">
-            Up to {MAX_BOARDS_PER_WATCH}. jword checks Greenhouse, Lever, and Ashby for this
-            company; you choose which to keep.
+            Up to {MAX_BOARDS_PER_WATCH}. jword looks for this company on Greenhouse, Lever, and
+            Ashby, and checks Workday boards from your links; you choose which to keep.
           </p>
         </div>
         <Button
@@ -214,15 +239,15 @@ export function BoardPicker({
         {state.kind === "searching" ? (
           <span className="inline-flex items-center gap-1.5">
             <Loader2Icon className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
-            Checking Greenhouse, Lever, and Ashby for “{state.company}”…
+            Checking boards for “{state.company}”…
           </span>
         ) : state.kind === "failed" ? (
           <span className="text-destructive">{state.message}</span>
         ) : state.kind === "done" ? (
           <>
             {suggestions.length
-              ? `Found ${suggestions.length} board${suggestions.length === 1 ? "" : "s"} for “${state.result.company}”.`
-              : `No public Greenhouse, Lever, or Ashby board found for “${state.result.company}” (tried ${state.result.candidates.join(", ") || "no names"}). Add one by URL below, or save without a board.`}
+              ? `${state.mode === "verify" ? "Checked" : "Found"} ${suggestions.length} board${suggestions.length === 1 ? "" : "s"} for “${state.result.company}”.`
+              : `No public Greenhouse, Lever, or Ashby board found for “${state.result.company}” (tried ${state.result.candidates.join(", ") || "no names"}). Workday boards are not guessed: paste one below, or save without a board.`}
             {state.result.unavailable.length
               ? ` Could not complete checks on ${state.result.unavailable.map((p) => ATS_PROVIDER_LABELS[p]).join(", ")}; try again later.`
               : ""}
@@ -253,7 +278,15 @@ export function BoardPicker({
                 <Checkbox
                   id={id}
                   checked={checked}
-                  disabled={disabled || taken || (!checked && full)}
+                  disabled={
+                    disabled ||
+                    taken ||
+                    (!checked &&
+                      full &&
+                      !selected.some(
+                        (item) => recognizedBoardKey(item) === recognizedBoardKey(board),
+                      ))
+                  }
                   onCheckedChange={(v) => toggle(board, v === true)}
                   className="mt-0.5"
                 />
@@ -283,6 +316,7 @@ export function BoardPicker({
                     </a>
                   </div>
                   <p className="text-muted-foreground text-xs">
+                    {s.requested ? "Checked from your link. " : ""}
                     {taken ? `Already watched for ${s.watchedBy!.company}. ` : ""}
                     {s.reasons.join(". ")}
                     {s.sampleTitles.length ? `. For example: ${s.sampleTitles.join("; ")}` : ""}
@@ -301,7 +335,7 @@ export function BoardPicker({
             id="watch-manual-board"
             type="url"
             inputMode="url"
-            placeholder="https://jobs.lever.co/… or a careers page"
+            placeholder="https://jobs.lever.co/…, a Workday link, or a careers page"
             value={manualUrl}
             disabled={disabled}
             onChange={(e) => setManualUrl(e.target.value)}
@@ -328,7 +362,7 @@ export function BoardPicker({
           role={manualError ? "alert" : undefined}
         >
           {manualError ??
-            "Greenhouse, Lever, and Ashby links become that board; any other link is kept as a careers page."}
+            "Greenhouse, Lever, Ashby, and Workday (myworkdayjobs.com or myworkdaysite.com) links become that board and are checked; any other link is kept as a careers page."}
         </p>
       </div>
 
@@ -344,6 +378,21 @@ export function BoardPicker({
                 className="bg-muted inline-flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs"
               >
                 <span className="truncate">{boardLabel(board)}</span>
+                {board.provider === "OTHER" && inferBoardFromUrl(board.boardUrl) ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled}
+                    onClick={() => {
+                      const upgraded = inferBoardFromUrl(board.boardUrl)!;
+                      toggle(upgraded, true);
+                      void search([upgraded], "verify");
+                    }}
+                  >
+                    Use {ATS_PROVIDER_LABELS[inferBoardFromUrl(board.boardUrl)!.provider]} board
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   size="icon-sm"

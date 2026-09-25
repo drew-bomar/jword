@@ -37,9 +37,11 @@ describe("callJword", () => {
 
   it("marks a lost save as unconfirmed so the identical command is retried", async () => {
     for (const fetchImpl of [offline, respond(502, "<html>Bad gateway</html>")]) {
-      const result = await callJword(URL_, "createApplication", {}, fetchImpl);
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error.code).toBe("OUTCOME_UNKNOWN");
+      for (const operation of ["createApplication", "addWatch"] as const) {
+        const result = await callJword(URL_, operation, {}, fetchImpl);
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error.code).toBe("OUTCOME_UNKNOWN");
+      }
     }
   });
 

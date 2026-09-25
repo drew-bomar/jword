@@ -30,3 +30,12 @@ it("passes cancellation and disables caching of owner data", async () => {
     expect.objectContaining({ signal, cache: "no-store", credentials: "same-origin" }),
   );
 });
+it("repeats a key for each value in a list", async () => {
+  const fetch = vi.fn(async () => Response.json({ ok: true, data: {} }));
+  vi.stubGlobal("fetch", fetch);
+  await readWatchlist("boards", { company: "X", boardUrls: ["https://a/1", "https://b/2"] });
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/watchlist/boards?company=X&boardUrls=https%3A%2F%2Fa%2F1&boardUrls=https%3A%2F%2Fb%2F2",
+    expect.anything(),
+  );
+});

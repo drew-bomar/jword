@@ -1,14 +1,23 @@
+import { parseWorkdayIdentifier, type SupportedBoardProvider } from "../watchlist/boards";
 import { hostOf, simplifyCompanyName } from "./candidates";
 import type { BoardConfidence, ProbeOutcome } from "./types";
 
 export interface BoardEvidence {
+  provider: SupportedBoardProvider;
   company: string;
   companyWebsite: string | null;
   boardIdentifier: string;
   /** Board names generated from the company name, most specific first. */
   candidates: string[];
   fromApplications: boolean;
+  fromWebsite?: boolean;
   outcome: ProbeOutcome;
+}
+
+/** The part of a board identifier that names the company: the whole name, or Workday's account. */
+function nameInIdentifier(evidence: BoardEvidence): string {
+  if (evidence.provider !== "WORKDAY") return evidence.boardIdentifier;
+  return parseWorkdayIdentifier(evidence.boardIdentifier)?.account ?? "";
 }
 
 /**
@@ -30,6 +39,10 @@ export function rateBoard(evidence: BoardEvidence): {
 
   if (evidence.fromApplications) {
     reasons.push("Linked from your saved applications");
+    raise("high");
+  }
+  if (evidence.fromWebsite) {
+    reasons.push("Linked directly from the company website field");
     raise("high");
   }
   const { outcome } = evidence;
@@ -54,7 +67,7 @@ export function rateBoard(evidence: BoardEvidence): {
     } else {
       reasons.push(`Board name “${outcome.boardName}” differs`);
     }
-  } else if (evidence.boardIdentifier.toLowerCase() === evidence.candidates[0]) {
+  } else if (nameInIdentifier(evidence).toLowerCase() === evidence.candidates[0]) {
     reasons.push("Board name matches the company name exactly");
     raise("medium");
   } else {

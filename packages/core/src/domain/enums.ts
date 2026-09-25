@@ -101,13 +101,14 @@ export function isWorkArrangement(value: unknown): value is WorkArrangement {
 // ---------------------------------------------------------------------------
 
 /** Applicant-tracking system hosting a company's public job board. OTHER: no supported board. */
-export const ATS_PROVIDERS = ["GREENHOUSE", "LEVER", "ASHBY", "OTHER"] as const;
+export const ATS_PROVIDERS = ["GREENHOUSE", "LEVER", "ASHBY", "WORKDAY", "OTHER"] as const;
 export type AtsProvider = (typeof ATS_PROVIDERS)[number];
 
 export const ATS_PROVIDER_LABELS: Record<AtsProvider, string> = {
   GREENHOUSE: "Greenhouse",
   LEVER: "Lever",
   ASHBY: "Ashby",
+  WORKDAY: "Workday",
   OTHER: "Other",
 };
 

@@ -198,6 +198,49 @@ test.describe("browser extension overlay", () => {
     await expect(overlay.getByLabel("Company *")).toHaveValue("Acme");
   });
 
+  test("watches a Workday board without an application and safely retries a lost save response", async () => {
+    const owner = await context.newPage();
+    await signIn(owner, user.email);
+    // A board landing page needs no job title or description. Its canonical URL represents
+    // Workday here because Chromium's test toolbar driver can script only the fixture host.
+    await context.route(JOB_PAGE, (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: `
+      <html><head><title>Careers</title><meta property="og:site_name" content="Acme">
+      <link rel="canonical" href="https://wd5.myworkdaysite.com/recruiting/acme/External">
+      </head><body><h1>Open jobs</h1></body></html>`,
+      }),
+    );
+    await worker.evaluate(() => {
+      const original = globalThis.fetch;
+      let loseFirst = true;
+      globalThis.fetch = async (...args) => {
+        const response = await original(...args);
+        if (String(args[0]).endsWith("/api/extension/add-watch") && loseFirst && response.ok) {
+          loseFirst = false;
+          throw new TypeError("Simulated lost response after commit");
+        }
+        return response;
+      };
+    });
+    const { overlay } = await capture();
+    await overlay.getByRole("button", { name: "Watch this company", exact: true }).click();
+    await expect(overlay.getByLabel("Company to watch")).toHaveValue("Acme");
+    await expect(overlay.getByText("2000+ open jobs", { exact: true })).toBeVisible();
+    await overlay.getByRole("button", { name: "Add to watchlist", exact: true }).click();
+    await expect(overlay.getByRole("button", { name: "Retry watch save" })).toBeEnabled();
+    await expect(overlay.getByRole("button", { name: "Close jword capture" })).toBeDisabled();
+    await expect(overlay.getByRole("button", { name: "Capture job", exact: true })).toBeDisabled();
+    await overlay.getByRole("button", { name: "Retry watch save" }).click();
+    await expect(overlay.getByText("Acme added to your watchlist.")).toBeVisible();
+    await owner.goto("/watchlist");
+    await expect(owner.getByTestId("watch-row")).toHaveCount(1);
+    await expect(owner.getByTestId("watch-row")).toContainText("acme/wd5/External");
+    await owner.goto("/");
+    await expect(owner.getByTestId("application-row")).toHaveCount(0);
+  });
+
   test("closing the overlay restores the page", async () => {
     const { job, overlay } = await capture();
     await overlay.getByRole("button", { name: "Close jword capture" }).click();

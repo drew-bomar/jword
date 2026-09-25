@@ -257,8 +257,8 @@ export type Database = {
           created_at: string
           id: string
           metadata: Json
-          original_watch_id: string
           occurred_at: string
+          original_watch_id: string
           summary: string
           type: Database["public"]["Enums"]["watch_event_type"]
           user_id: string
@@ -269,8 +269,8 @@ export type Database = {
           created_at?: string
           id?: string
           metadata?: Json
-          original_watch_id: string
           occurred_at?: string
+          original_watch_id: string
           summary: string
           type: Database["public"]["Enums"]["watch_event_type"]
           user_id: string
@@ -281,8 +281,8 @@ export type Database = {
           created_at?: string
           id?: string
           metadata?: Json
-          original_watch_id?: string
           occurred_at?: string
+          original_watch_id?: string
           summary?: string
           type?: Database["public"]["Enums"]["watch_event_type"]
           user_id?: string
@@ -586,6 +586,15 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_company_watch: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       import_applications: {
         Args: {
           p_actor: string
@@ -597,15 +606,6 @@ export type Database = {
       }
       save_candidate_profile: {
         Args: { p_command: Json; p_owner_id: string }
-        Returns: Json
-      }
-      delete_company_watch: {
-        Args: {
-          p_actor: string
-          p_command: Json
-          p_owner_id: string
-          p_request_id: string
-        }
         Returns: Json
       }
       set_company_watch_active: {
@@ -678,7 +678,7 @@ export type Database = {
         | "OFFER"
         | "REJECTED"
         | "WITHDRAWN"
-      ats_provider: "GREENHOUSE" | "LEVER" | "ASHBY" | "OTHER"
+      ats_provider: "GREENHOUSE" | "LEVER" | "ASHBY" | "WORKDAY" | "OTHER"
       watch_event_type:
         | "WATCH_CREATED"
         | "WATCH_UPDATED"
@@ -835,7 +835,7 @@ export const Constants = {
         "REJECTED",
         "WITHDRAWN",
       ],
-      ats_provider: ["GREENHOUSE", "LEVER", "ASHBY", "OTHER"],
+      ats_provider: ["GREENHOUSE", "LEVER", "ASHBY", "WORKDAY", "OTHER"],
       watch_event_type: [
         "WATCH_CREATED",
         "WATCH_UPDATED",

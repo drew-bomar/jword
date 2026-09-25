@@ -173,6 +173,33 @@ describe("jword MCP watchlist tools", () => {
     });
   });
 
+  it("checks a Workday link the user supplied and can add that board", async () => {
+    const found = await h.call("discover_company_boards", {
+      company: "Acme",
+      boardUrls: ["https://acme.wd5.myworkdayjobs.com/en-US/External/job/Austin/Engineer_JR1"],
+    });
+    expect(found.body.suggestions).toEqual([
+      expect.objectContaining({
+        provider: "WORKDAY",
+        boardIdentifier: "acme/wd5/External",
+        boardUrl: "https://acme.wd5.myworkdayjobs.com/External",
+        requested: true,
+        openJobs: 2000,
+        openJobsAtLeast: true,
+      }),
+    ]);
+    const added = await add({
+      company: "Acme",
+      boards: [{ provider: "WORKDAY", boardIdentifier: "acme/wd5/External" }],
+    });
+    expect(added.raw.isError).toBe(false);
+    const tooMany = await h.client.callTool({
+      name: "discover_company_boards",
+      arguments: { company: "Acme", boardUrls: ["a", "b", "c", "d"] },
+    });
+    expect(tooMany.isError).toBe(true);
+  });
+
   it("discovers boards (fixture directory) and suggests companies from applications", async () => {
     const found = await h.call("discover_company_boards", { company: "Stripe" });
     expect(found.raw.isError).toBe(false);

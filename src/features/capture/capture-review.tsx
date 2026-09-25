@@ -130,10 +130,12 @@ export function CaptureReview({
   posting,
   api,
   jwordUrl,
+  onBusyChange,
 }: {
   posting: CapturedPosting;
   api: CaptureApi;
   jwordUrl: string;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(posting));
   const [candidates, setCandidates] = useState<TargetOption[] | null>(null);
@@ -150,6 +152,9 @@ export function CaptureReview({
   const [lookingUp, startLookup] = useTransition();
   const { save, unconfirmed } = useReliableMutation();
   const locked = pending || unconfirmed;
+  useEffect(() => {
+    onBusyChange?.(locked);
+  }, [locked, onBusyChange]);
 
   const key = probeKey(draft);
   const canProbe = draft.company.trim() !== "" && draft.title.trim() !== "";

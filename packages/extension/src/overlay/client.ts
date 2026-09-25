@@ -1,4 +1,8 @@
+import type { WatchCaptureApi } from "@/features/capture/watch-api";
 import type {
+  BoardDiscoveryResult,
+  CompanyOption,
+  WatchMutationResult,
   ApplicationDetail,
   ApplicationSummary,
   DuplicateCandidate,
@@ -49,5 +53,13 @@ export function backgroundApi(nonce: string): CaptureApi {
     getApplication: call<ApplicationDetail>(nonce, "getApplication"),
     createApplication: call<MutationResult>(nonce, "createApplication"),
     updatePosting: call<MutationResult>(nonce, "updatePosting"),
+  };
+}
+
+export function backgroundWatchApi(nonce: string): WatchCaptureApi {
+  return {
+    searchCompanies: call<CompanyOption[]>(nonce, "searchCompanies"),
+    verifyBoards: call<BoardDiscoveryResult>(nonce, "verifyBoards"),
+    addWatch: call<WatchMutationResult>(nonce, "addWatch"),
   };
 }

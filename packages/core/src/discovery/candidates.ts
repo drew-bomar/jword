@@ -1,4 +1,4 @@
-import { isValidBoardIdentifier } from "../watchlist/boards";
+import { BOARD_IDENTIFIER_PATTERN } from "../watchlist/boards";
 
 /** Words dropped from the end of a company name: legal forms. */
 const LEGAL_SUFFIXES = new Set([
@@ -83,7 +83,7 @@ export function boardNameCandidates(company: string, websiteUrl?: string | null)
   const list = [full.join(""), full.join("-"), core.join(""), core.join("-"), domainRoot ?? ""];
   const unique: string[] = [];
   for (const candidate of list) {
-    if (candidate.length < 2 || !isValidBoardIdentifier(candidate)) continue;
+    if (candidate.length < 2 || !BOARD_IDENTIFIER_PATTERN.test(candidate)) continue;
     if (!unique.includes(candidate)) unique.push(candidate);
   }
   return unique.slice(0, MAX_BOARD_CANDIDATES);

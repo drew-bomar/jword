@@ -18,6 +18,7 @@ import type {
 import {
   canonicalBoardUrl,
   inferBoardFromUrl,
+  NAME_DISCOVERY_PROVIDERS,
   SUPPORTED_BOARD_PROVIDERS,
   type InferredBoard,
 } from "../watchlist/boards";
@@ -25,6 +26,7 @@ import {
   addWatchedCompanySchema,
   boardKey,
   discoverBoardsSchema,
+  verifyBoardsSchema,
   getWatchedCompanySchema,
   MAX_BOARDS_PER_WATCH,
   listWatchedCompaniesSchema,
@@ -169,10 +171,12 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
     },
 
     /**
-     * Find a company's likely public job boards. Evidence comes from the owner's saved job URLs
-     * (no network) and, when a directory is configured, from Greenhouse, Lever, and Ashby's
-     * public APIs, tried with names generated from the company name and website. Returns
-     * ranked suggestions with reasons; it never saves anything. The owner picks.
+     * Find a company's likely public job boards. Evidence comes from board links the owner
+     * supplied, direct company website links, the owner's saved job URLs, and, when configured,
+     * the providers' public endpoints. Supplied and saved boards (including Workday) are checked
+     * first; then Greenhouse, Lever, and Ashby are tried with names generated from the company
+     * name and website. Workday is never guessed (decision 022). Returns ranked suggestions
+     * with reasons; it never saves anything. Verification mode checks supplied links only.
      */
     async discoverCompanyBoards(
       input: unknown,
@@ -180,6 +184,13 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
       options: { signal?: AbortSignal } = {},
     ): Promise<BoardDiscoveryResult> {
       const query = parseOrThrow(discoverBoardsSchema, input);
+      const verifying = query.mode === "verify";
+      if (verifying)
+        parseOrThrow(verifyBoardsSchema, {
+          company: query.company,
+          companyId: query.companyId,
+          boardUrls: query.boardUrls,
+        });
       return run("discover_company_boards", actor, undefined, async () => {
         const timeout = AbortSignal.timeout(DISCOVERY_TIMEOUT_MS);
         const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
@@ -219,21 +230,29 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
         }
         const name = company?.name ?? query.company!;
         const website = query.websiteUrl ?? company?.websiteUrl ?? null;
-        const fromApplications = company
-          ? boardsFromUrls(
-              await optionalRead(
-                () => repository.listCompanyJobUrls(actor.userId, company!.companyId),
-                [],
-                "Saved application links could not be checked.",
-              ),
-            )
-          : [];
-        const candidates = boardNameCandidates(name, website);
+        const fromApplications =
+          company && !verifying
+            ? boardsFromUrls(
+                await optionalRead(
+                  () => repository.listCompanyJobUrls(actor.userId, company!.companyId),
+                  [],
+                  "Saved application links could not be checked.",
+                ),
+              )
+            : [];
+        const rankingNames = boardNameCandidates(name, verifying ? null : website);
+        const candidates = verifying ? [] : rankingNames;
+        const fromWebsite = !verifying && website ? boardsFromUrls([website]) : [];
+        // Supplied links come first so they fit within the probe budget; careers pages are skipped.
+        const requested = boardsFromUrls(query.boardUrls ?? []);
 
-        const targets: InferredBoard[] = [...fromApplications];
+        const targets: InferredBoard[] = [...requested];
+        for (const board of [...fromWebsite, ...fromApplications]) {
+          if (!targets.some((t) => boardKey(t) === boardKey(board))) targets.push(board);
+        }
         if (boardDirectory) {
           for (const identifier of candidates) {
-            for (const provider of SUPPORTED_BOARD_PROVIDERS) {
+            for (const provider of NAME_DISCOVERY_PROVIDERS) {
               const board = {
                 provider,
                 boardIdentifier: identifier,
@@ -284,13 +303,17 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
         targets.forEach((target, index) => {
           const outcome = outcomes[index]!;
           const linked = fromApplications.some((b) => boardKey(b) === boardKey(target));
-          if (outcome.status !== "found" && !linked) return;
+          const websiteLinked = fromWebsite.some((b) => boardKey(b) === boardKey(target));
+          const supplied = requested.some((b) => boardKey(b) === boardKey(target));
+          if (outcome.status !== "found" && !linked && !supplied && !websiteLinked) return;
           const { confidence, reasons } = rateBoard({
+            provider: target.provider,
             company: name,
             companyWebsite: website,
             boardIdentifier: target.boardIdentifier,
-            candidates,
+            candidates: rankingNames,
             fromApplications: linked,
+            fromWebsite: websiteLinked,
             outcome,
           });
           const found = outcome.status === "found" ? outcome : null;
@@ -299,12 +322,14 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
             boardIdentifier: target.boardIdentifier,
             boardUrl: target.boardUrl,
             confidence,
+            verification: outcome.status,
             reasons,
             boardName: found?.boardName ?? null,
             openJobs: found?.openJobs ?? null,
             openJobsAtLeast: found?.openJobsAtLeast ?? false,
             sampleTitles: found?.sampleTitles ?? [],
             fromApplications: linked,
+            requested: supplied,
             watchedBy: watchers.get(boardKey(target)) ?? null,
           });
         });
@@ -322,7 +347,12 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
                 .filter((x) => x.t.provider === provider);
               return tried.length > 0 && tried.every((x) => x.o.status === "error");
             })
-          : [...SUPPORTED_BOARD_PROVIDERS];
+          : SUPPORTED_BOARD_PROVIDERS.filter(
+              (provider) =>
+                (!verifying &&
+                  (NAME_DISCOVERY_PROVIDERS as readonly string[]).includes(provider)) ||
+                targets.some((t) => t.provider === provider),
+            );
 
         return {
           company: name,

@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
+import { EXTENSION_ORIGIN } from "./helpers/extension";
 import type { Page } from "@playwright/test";
 import { createApplication, expect, test } from "./helpers/auth";
 
 // Board discovery answers from E2E_FIXTURE_BOARDS (JWORD_BOARD_DIRECTORY=fixtures in the
-// Playwright web server), so these tests never call Greenhouse, Lever, or Ashby.
+// Playwright web server), so these tests never call Greenhouse, Lever, Ashby, or Workday.
 
 async function openAdd(page: Page) {
   await page.getByRole("button", { name: "Add company" }).first().click();
@@ -324,6 +326,80 @@ test.describe("company watchlist", () => {
     await expect(
       row.getByText(/Started watching Notion \(Ashby notion, Greenhouse notion\)/),
     ).toBeVisible();
+  });
+
+  test("a pasted Workday posting link becomes its board and is checked, never guessed", async ({
+    page,
+  }) => {
+    await page.goto("/watchlist");
+    const dialog = await openAdd(page);
+    await dialog.getByLabel("Company *").fill("Acme");
+    await expect(dialog.getByText(/Workday boards are not guessed/)).toBeVisible();
+    await dialog
+      .getByLabel("Add a board by URL")
+      .fill(
+        "https://acme.wd5.myworkdayjobs.com/en-US/External/job/Austin-TX/Firmware-Engineer_JR1?source=LinkedIn",
+      );
+    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    const workday = dialog.getByTestId("board-suggestion").filter({ hasText: "Workday" });
+    await expect(workday).toContainText("acme/wd5/External");
+    await expect(workday).toContainText("2000+ open jobs");
+    await expect(workday).toContainText("Checked from your link");
+    await expect(workday.getByRole("checkbox")).toBeChecked();
+    await expect(dialog.getByText("Selected (1/3)")).toBeVisible();
+    await dialog.getByRole("button", { name: "Add to watchlist" }).click();
+    await expect(dialog).toBeHidden();
+    const row = page.getByTestId("watch-row").filter({ hasText: "Acme" });
+    await expect(
+      row.getByText(/Started watching Acme \(Workday acme\/wd5\/External\)/),
+    ).toBeVisible();
+  });
+
+  test("upgrading an old Other link preserves a full three-board selection", async ({ page }) => {
+    const response = await page.request.post("/api/extension/add-watch", {
+      headers: { Origin: EXTENSION_ORIGIN },
+      data: {
+        requestId: randomUUID(),
+        company: "Acme",
+        boards: [
+          {
+            provider: "OTHER",
+            boardUrl:
+              "https://wd5.myworkdaysite.com/en-US/recruiting/acme/External/job/Engineer_JR1",
+          },
+          { provider: "LEVER", boardIdentifier: "acme" },
+          { provider: "ASHBY", boardIdentifier: "acme" },
+        ],
+      },
+    });
+    expect(response.ok()).toBe(true);
+    await page.goto("/watchlist");
+    await page.getByRole("button", { name: "Edit Acme", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit Acme" });
+    await expect(dialog.getByText("Selected (3/3)")).toBeVisible();
+    const checked = page.waitForResponse(
+      (reply) =>
+        reply.url().includes("/api/watchlist/boards?") &&
+        new URL(reply.url()).searchParams.get("mode") === "verify",
+    );
+    await dialog.getByRole("button", { name: "Use Workday board", exact: true }).click();
+    const data = await (await checked).json();
+    expect(data.data.candidates).toEqual([]);
+    expect(data.data.suggestions).toHaveLength(1);
+    await expect(dialog.getByText("Selected (3/3)")).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "Selected boards" })).toContainText(
+      "Workday acme/wd5/External",
+    );
+    await dialog.getByRole("button", { name: "Save changes" }).click();
+    await expect(dialog).toBeHidden();
+    await page.getByRole("button", { name: "Edit Acme", exact: true }).click();
+    await expect(dialog.getByText("Selected (3/3)")).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Use Workday board", exact: true }),
+    ).toHaveCount(0);
+    await expect(dialog.getByRole("list", { name: "Selected boards" })).toContainText(
+      "Workday acme/wd5/External",
+    );
   });
 
   test("suggestions from applications watch companies you applied to in one step", async ({

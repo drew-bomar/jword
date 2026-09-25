@@ -8,7 +8,12 @@ import {
   uuidSchema,
   versionSchema,
 } from "../validation/schemas";
-import { BOARD_IDENTIFIER_PATTERN, canonicalBoardUrl } from "./boards";
+import {
+  canonicalBoardUrl,
+  inferBoardFromUrl,
+  isValidBoardIdentifier,
+  MAX_BOARD_IDENTIFIER_LENGTH,
+} from "./boards";
 
 export const WATCHLIST_DEFAULT_LIMIT = 10;
 export const WATCHLIST_MCP_MAX_LIMIT = 25;
@@ -22,14 +27,26 @@ const blankToNull = (value: unknown) =>
 
 export const atsProviderSchema = z.enum(ATS_PROVIDERS, { error: "Unknown provider." });
 
+/** Shape shared by every provider; the exact per-provider rule is checked with the board. */
 export const boardIdentifierSchema = z
   .string()
   .trim()
-  .max(100, "Board identifier must be at most 100 characters.")
+  .max(
+    MAX_BOARD_IDENTIFIER_LENGTH,
+    `Board identifier must be at most ${MAX_BOARD_IDENTIFIER_LENGTH} characters.`,
+  )
   .regex(
-    BOARD_IDENTIFIER_PATTERN,
+    /^[A-Za-z0-9][A-Za-z0-9._/-]*$/,
     "Use the board name from the URL: letters, numbers, dots, dashes, or underscores.",
   );
+
+const IDENTIFIER_HINT: Record<Exclude<AtsProvider, "OTHER">, string> = {
+  GREENHOUSE: "Use the board name from the URL: letters, numbers, dots, dashes, or underscores.",
+  LEVER: "Use the board name from the URL: letters, numbers, dots, dashes, or underscores.",
+  ASHBY: "Use the board name from the URL: letters, numbers, dots, dashes, or underscores.",
+  WORKDAY:
+    "Use account/cluster/site from the Workday URL, for example nvidia/wd5/NVIDIAExternalCareerSite.",
+};
 const optionalBoardIdentifier = z.preprocess(
   blankToNull,
   boardIdentifierSchema.nullable().optional(),
@@ -61,7 +78,7 @@ export const boardInputSchema = z
           code: "custom",
           path: ["boardIdentifier"],
           message:
-            "Other has no board identifier. Choose Greenhouse, Lever, or Ashby, or clear it.",
+            "Other has no board identifier. Choose Greenhouse, Lever, Ashby, or Workday, or clear it.",
         });
       }
       if (!board.boardUrl) {
@@ -78,6 +95,12 @@ export const boardInputSchema = z
         code: "custom",
         path: ["boardIdentifier"],
         message: `Enter the ${ATS_PROVIDER_LABELS[board.provider]} board identifier.`,
+      });
+    } else if (!isValidBoardIdentifier(board.provider, board.boardIdentifier)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["boardIdentifier"],
+        message: IDENTIFIER_HINT[board.provider],
       });
     }
     if (board.boardUrl) {
@@ -210,16 +233,47 @@ export type SearchCompaniesInput = z.infer<typeof searchCompaniesSchema>;
 
 export const discoverBoardsSchema = z
   .strictObject({
+    /** Verification checks only supplied recognized links, without company-name guesses. */
+    mode: z.enum(["discover", "verify"]).optional(),
     /** Company name to look up; used when no companyId is given. */
     company: requiredText(200, "Company").optional(),
     /** Existing company: its saved applications and website add evidence. */
     companyId: uuidSchema.optional(),
     /** Company website, for one more board-name guess and a domain check. */
     websiteUrl: optionalUrl,
+    /**
+     * Board links the owner supplied (pasted or already selected), checked first. Links that are
+     * not a recognized board are careers pages and are never fetched. A single query-string
+     * value arrives as a string.
+     */
+    boardUrls: z.preprocess(
+      (value) => (typeof value === "string" ? [value] : value),
+      z
+        .array(z.string().trim().min(1).max(2048))
+        .max(MAX_BOARDS_PER_WATCH, `Check at most ${MAX_BOARDS_PER_WATCH} board links at once.`)
+        .optional(),
+    ),
   })
   .superRefine((value, ctx) => {
     if (!value.company && !value.companyId) {
       ctx.addIssue({ code: "custom", path: ["company"], message: "Company is required." });
     }
   });
+export const verifyBoardsSchema = z
+  .strictObject({
+    company: requiredText(200, "Company").optional(),
+    companyId: uuidSchema.optional(),
+    boardUrls: z
+      .array(
+        z
+          .string()
+          .trim()
+          .max(2048)
+          .refine((url) => inferBoardFromUrl(url) !== null, "Supply a recognized job-board URL."),
+      )
+      .min(1)
+      .max(MAX_BOARDS_PER_WATCH),
+  })
+  .refine((value) => Boolean(value.company || value.companyId), "Company is required.");
+
 export type DiscoverBoardsInput = z.infer<typeof discoverBoardsSchema>;

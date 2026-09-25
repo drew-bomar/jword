@@ -22,19 +22,21 @@ const found = (
   openJobs: number,
   sampleTitles: string[],
   website: string | null = null,
+  openJobsAtLeast = false,
 ): ProbeOutcome => ({
   status: "found",
   boardName,
   website,
   openJobs,
-  openJobsAtLeast: false,
+  openJobsAtLeast,
   sampleTitles,
 });
 
 /**
  * Deterministic boards for browser tests (JWORD_BOARD_DIRECTORY=fixtures), so Playwright
  * never calls the real providers. "Stripe" and "Ramp" have strong matches; "notion" on Lever
- * is a same-name board belonging to someone else.
+ * is a same-name board belonging to someone else. The Workday board is reached only through
+ * a pasted or saved link, and reports a capped total.
  */
 export const E2E_FIXTURE_BOARDS: Boards = {
   GREENHOUSE: {
@@ -47,5 +49,14 @@ export const E2E_FIXTURE_BOARDS: Boards = {
   ASHBY: {
     ramp: found("Ramp", 120, ["Software Engineer, Backend"], "https://ramp.com"),
     notion: found("Notion", 88, ["Product Engineer"], "https://www.notion.so"),
+  },
+  WORKDAY: {
+    "acme/wd5/external": found(
+      null,
+      2000,
+      ["Silicon Validation Engineer", "Firmware Engineer"],
+      null,
+      true,
+    ),
   },
 };

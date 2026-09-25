@@ -91,10 +91,10 @@ describe("inferBoardFromUrl", () => {
 describe("board identifiers", () => {
   it("accepts board-style names and rejects others", () => {
     for (const ok of ["stripe", "acme-co", "Ramp", "a", "board_1.v2"]) {
-      expect(isValidBoardIdentifier(ok), ok).toBe(true);
+      expect(isValidBoardIdentifier("LEVER", ok), ok).toBe(true);
     }
     for (const bad of ["", "-x", ".x", "has space", "slash/inside", "a".repeat(101), "émoji"]) {
-      expect(isValidBoardIdentifier(bad), bad).toBe(false);
+      expect(isValidBoardIdentifier("LEVER", bad), bad).toBe(false);
     }
   });
 

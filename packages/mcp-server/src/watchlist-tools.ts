@@ -35,12 +35,14 @@ const board = z.strictObject({
   provider: provider.describe("OTHER is a careers page without a supported board."),
   boardIdentifier: z
     .string()
-    .max(100)
+    .max(170)
     .optional()
     .describe(
       "Greenhouse board token, Lever site slug, or Ashby job-board name: the first path segment of " +
         "job-boards.greenhouse.io/{token}, jobs.lever.co/{slug}, or jobs.ashbyhq.com/{name}. " +
-        "Required for GREENHOUSE/LEVER/ASHBY; omit for OTHER.",
+        "WORKDAY uses account/cluster/site from {account}.{cluster}.myworkdayjobs.com/{site}, e.g. " +
+        "nvidia/wd5/NVIDIAExternalCareerSite; copy it from discover_company_boards rather than building it. " +
+        "Required for GREENHOUSE/LEVER/ASHBY/WORKDAY; omit for OTHER.",
     ),
   boardUrl: z
     .string()
@@ -304,19 +306,36 @@ export function registerWatchlistTools(
     {
       title: "Discover company job boards",
       description:
-        "Look up a company's public job boards. Uses the owner's saved application links (local) and asks " +
-        "Greenhouse, Lever, and Ashby's public APIs whether boards exist under names built from the company " +
-        "name and website. Returns ranked suggestions with confidence (high/medium/low), reasons, open-job " +
+        "Look up a company's public job boards. Checks board links the user gave (boardUrls) and the owner's " +
+        "saved application links first, including Workday, then asks Greenhouse, Lever, and Ashby's public " +
+        "APIs whether boards exist under names built from the company name and website. Workday boards are " +
+        "never guessed from a name: pass a Workday link the user gave in boardUrls. Returns ranked " +
+        "suggestions with confidence (high/medium/low), reasons, open-job " +
         "counts, sample titles, and whether a board is already watched. Saves nothing. Same-name boards can " +
         "belong to other companies: add high-confidence boards only when ownershipChecked=true; otherwise " +
         "board ownership is unknown, so ask the user before adding. Ask about medium/low matches too. " +
         "incomplete and warnings identify partial results; absence there does not prove a board is missing.",
       inputSchema: z.strictObject({
+        mode: z
+          .enum(["discover", "verify"])
+          .optional()
+          .describe(
+            "Use verify to check only supplied recognized boardUrls, with no name guesses or saved-link probes.",
+          ),
         company: z.string().min(1).max(200).optional().describe("Company name."),
         companyId: uuid
           .optional()
           .describe("Existing company id; adds its saved job links as evidence."),
         websiteUrl: z.string().max(2048).optional().describe("Company website, http(s), if known."),
+        boardUrls: z
+          .array(z.string().min(1).max(2048))
+          .max(3)
+          .optional()
+          .describe(
+            "Up to three job-board links the user supplied (Greenhouse, Lever, Ashby, or Workday " +
+              "myworkdayjobs.com / myworkdaysite.com, board or posting pages). Each is checked; " +
+              "requested=true marks it in the results. Other links are ignored, never fetched.",
+          ),
       }),
       annotations: { ...READ_ONLY, idempotentHint: false, openWorldHint: true },
     },
@@ -340,7 +359,7 @@ export function registerWatchlistTools(
     {
       title: "Suggest watches from applications",
       description:
-        "Companies the owner applied to but does not watch yet, with the Greenhouse/Lever/Ashby boards their " +
+        "Companies the owner applied to but does not watch yet, with the Greenhouse/Lever/Ashby/Workday boards their " +
         "saved job links point to (up to three each). Local data only; no network. Use add_watched_company " +
         "with the companyId and boards for the ones the user wants.",
       inputSchema: z.strictObject({}),

@@ -1191,7 +1191,7 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
     if (board.provider === "OTHER") {
       if (identifier !== null)
         throw fail(
-          "A board identifier applies only to Greenhouse, Lever, or Ashby.",
+          "A board identifier applies only to Greenhouse, Lever, Ashby, or Workday.",
           "BOARD_IDENTIFIER_NOT_ALLOWED",
         );
       if (otherUrl === null)
@@ -1200,7 +1200,7 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
     }
     if (identifier === null)
       throw fail("This provider needs a board identifier.", "BOARD_IDENTIFIER_REQUIRED");
-    if (!isValidBoardIdentifier(identifier))
+    if (!isValidBoardIdentifier(board.provider, identifier))
       throw fail("Board identifier has an invalid format.", "BOARD_IDENTIFIER_INVALID");
     if (otherUrl !== null)
       throw fail("The board URL is set from the provider and identifier.", "BOARD_URL_DERIVED");

@@ -18,7 +18,7 @@ let directory: BoardDirectory | undefined;
 
 /**
  * Public job-board lookups (decision 019). Browser tests set JWORD_BOARD_DIRECTORY=fixtures so
- * they never call Greenhouse, Lever, or Ashby.
+ * they never call Greenhouse, Lever, Ashby, or Workday.
  */
 function boardDirectory(): BoardDirectory {
   assertBoardDirectoryEnvironment(process.env);
