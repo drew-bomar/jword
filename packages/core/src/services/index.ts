@@ -26,7 +26,13 @@ import {
 } from "../import/index";
 import type { Logger } from "../logging";
 import { silentLogger } from "../logging";
-import type { MutationContext, TrackerRepository } from "../repositories/types";
+import { createWatchlistServices } from "./watchlist";
+import type { BoardDirectory } from "../discovery/types";
+import type {
+  MutationContext,
+  TrackerRepository,
+  WatchlistRepository,
+} from "../repositories/types";
 import {
   addApplicationNoteSchema,
   candidateProfileSchema,
@@ -45,7 +51,9 @@ import {
 } from "../validation/schemas";
 
 export interface ServiceDependencies {
-  repository: TrackerRepository;
+  repository: TrackerRepository & WatchlistRepository;
+  /** Public job-board lookups for watchlist discovery (decision 019). */
+  boardDirectory?: BoardDirectory;
   clock: Clock;
   logger?: Logger;
 }
@@ -168,6 +176,9 @@ export function createTrackerServices(deps: ServiceDependencies) {
   });
 
   return {
+    // Company watchlist (decision 018): same repository, same entry points.
+    ...createWatchlistServices({ repository, logger, boardDirectory: deps.boardDirectory }),
+
     // ----------------------------------------------------------------- reads
     async searchApplications(
       input: unknown,
@@ -403,3 +414,5 @@ export function createTrackerServices(deps: ServiceDependencies) {
 }
 
 export type TrackerServices = ReturnType<typeof createTrackerServices>;
+
+export * from "./watchlist";

@@ -8,6 +8,9 @@ import type { CapturedPosting } from "@jword/core/browser";
 
 /** Overlay operation -> jword endpoint under /api/extension/. The only calls that exist. */
 export const API_ENDPOINTS = {
+  searchCompanies: "search-companies",
+  verifyBoards: "verify-boards",
+  addWatch: "add-watch",
   findDuplicates: "find-duplicates",
   searchApplications: "search-applications",
   getApplication: "get-application",
@@ -17,7 +20,11 @@ export const API_ENDPOINTS = {
 export type ApiOp = keyof typeof API_ENDPOINTS;
 
 /** A lost response to these may still have saved; the caller must retry the identical command. */
-export const MUTATION_OPS: ReadonlySet<ApiOp> = new Set(["createApplication", "updatePosting"]);
+export const MUTATION_OPS: ReadonlySet<ApiOp> = new Set([
+  "createApplication",
+  "updatePosting",
+  "addWatch",
+]);
 
 export function isApiOp(value: unknown): value is ApiOp {
   return typeof value === "string" && Object.hasOwn(API_ENDPOINTS, value);

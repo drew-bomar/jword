@@ -1,3 +1,4 @@
+import { inferBoardFromUrl, parseWorkdayIdentifier } from "@jword/core/browser";
 import { arrangementFrom, blockText, textOf, titleFromSlug } from "../text";
 import type { SiteExtractor } from "../types";
 
@@ -20,15 +21,17 @@ export const workday: SiteExtractor = {
   source: "Workday",
   matches: (url) => /\.myworkday(jobs|site)\.com$/.test(url.hostname),
   extract(doc, url) {
-    const tenant = url.hostname.split(".")[0];
+    const board = inferBoardFromUrl(url.href);
+    const tenant =
+      board?.provider === "WORKDAY" ? parseWorkdayIdentifier(board.boardIdentifier)?.account : null;
     const location = field(doc, "locations");
     const remoteType = field(doc, "remoteType");
     const requisition = field(doc, "requisitionId")?.replace(/^job requisition id\s*/i, "");
     const fromUrl = /_([A-Za-z0-9-]+)(?:-\d+)?$/.exec(url.pathname)?.[1] ?? null;
     return {
       title: textOf(doc, '[data-automation-id="jobPostingHeader"]', "h1, h2"),
-      company: titleFromSlug(tenant),
-      guessed: ["company"],
+      company: tenant ? titleFromSlug(tenant) : null,
+      guessed: tenant ? ["company"] : [],
       location,
       workArrangement: arrangementFrom(remoteType) ?? arrangementFrom(location),
       description: blockText(doc, '[data-automation-id="jobPostingDescription"]'),

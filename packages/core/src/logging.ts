@@ -8,6 +8,7 @@ export interface LogEvent {
   errorCode?: string;
   applicationId?: string;
   noteId?: string;
+  watchId?: string;
   noop?: boolean;
   replayed?: boolean;
 }

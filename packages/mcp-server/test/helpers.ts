@@ -2,7 +2,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+  createFixtureBoardDirectory,
   createTrackerServices,
+  E2E_FIXTURE_BOARDS,
   FakeTrackerRepository,
   fixedClock,
   type ActorContext,
@@ -30,7 +32,11 @@ export interface Harness {
 
 export async function createHarness(): Promise<Harness> {
   const repo = new FakeTrackerRepository();
-  const services = createTrackerServices({ repository: repo, clock: fixedClock(TODAY) });
+  const services = createTrackerServices({
+    repository: repo,
+    clock: fixedClock(TODAY),
+    boardDirectory: createFixtureBoardDirectory(E2E_FIXTURE_BOARDS),
+  });
   const actor: ActorContext = { userId: OWNER_ID, actorType: "CODEX" };
   const server = createJwordServer({ services, actor });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

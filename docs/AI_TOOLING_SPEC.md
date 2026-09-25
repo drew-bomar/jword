@@ -53,7 +53,7 @@ Codex must never receive a tool that can run arbitrary SQL or mutate arbitrary f
 
 ## Implementation notes (2026-09-21)
 
-Implemented in `packages/mcp-server/src/tools.ts`. Input schemas are `z.strictObject` and the SDK validates them before the handler runs, so unknown fields are rejected at the protocol level. `update_application_details` exposes only the allowlist below even though the shared service and database function accept a broader set for the web form (title, company, external id, description). The server also publishes protocol instructions (search first, ask on ambiguity, re-read on STALE_VERSION). Registration steps are in [MCP_SETUP.md](MCP_SETUP.md).
+Implemented in `packages/mcp-server/src/tools.ts` (and `watchlist-tools.ts` for the five watchlist tools added in decision 018). Input schemas are `z.strictObject` and the SDK validates them before the handler runs, so unknown fields are rejected at the protocol level. `update_application_details` exposes only the allowlist below even though the shared service and database function accept a broader set for the web form (title, company, external id, description). The server also publishes protocol instructions (search first, ask on ambiguity, re-read on STALE_VERSION). Registration steps are in [MCP_SETUP.md](MCP_SETUP.md).
 
 ## Tool catalog
 
@@ -233,6 +233,50 @@ Activity responses include `hasMore` and `nextCursor` with stable ordering. Retu
 ### `get_pipeline_summary` (read-only)
 
 Returns counts by status and a short list of stale active applications. This is deterministic database aggregation, not model analytics.
+
+### Company watchlist tools (decision 018)
+
+Seven bounded tools in `packages/mcp-server/src/watchlist-tools.ts`, backed by the same
+watchlist services as the web page. None fetches or stores job postings; only
+`discover_company_boards` calls outside services, to check whether boards exist.
+
+- `list_watched_companies` (read-only): `{ text?, active?, provider?, limit? (default 10, max 25), cursor? }`.
+  Items: `watchId`, `companyId`, `company`, `boards` (up to three), `active`,
+  `version`, `interestLevel`, `applicationCount`, with `hasMore` / `nextCursor`. No notes.
+- `get_watched_company` (read-only): `{ watchId }`. The watch with company website and notes
+  (user data), plus recent audit entries.
+- `discover_company_boards` (read-only, open world): `{ company? | companyId?, websiteUrl?, boardUrls?, mode? }`.
+  `boardUrls` (up to three, [decision 022](decisions/022-workday-boards.md)) are board links the
+  user gave; each recognized board, including Workday, is checked first and marked `requested`.
+  Workday is never guessed from a name. Direct board URLs in the company website field also add evidence.
+  `mode: "verify"` checks only the supplied recognized links; no name guesses or saved-application
+  probes. `verification` in each suggestion distinguishes `found`, `missing`, and `error` from
+  confidence about which company owns the board.
+  Ranked suggestions (`provider`, `boardIdentifier`, `boardUrl`, `confidence` high/medium/low,
+  `reasons`, `openJobs`, `sampleTitles`, `fromApplications`, `watchedBy`) plus the names tried and
+  any unreachable providers. Saves nothing ([decision 019](decisions/019-board-discovery.md)).
+  Decision 020 adds `incomplete`, `warnings`, and `ownershipChecked`. When ownership is unknown,
+  `watchedBy=null` does not mean free; ask before adding. Missing results from incomplete searches
+  are unverified, not proof that the provider has no board.
+- `suggest_watches_from_applications` (read-only, local): unwatched companies you applied to with
+  boards parsed from saved job URLs.
+- `add_watched_company`: `{ requestId, company? | companyId?, boards?: Array<{ provider, boardIdentifier? | boardUrl? (OTHER) }> (max 3), interestLevel?, websiteUrl?, companyNotes? }`.
+  Returns the new `watchId` and `companyCreated`. An existing watch (active or inactive) is
+  `CONFLICT` / `ALREADY_WATCHED` with `watchId` and `watchActive`; the same board under another
+  company is `CONFLICT` / `BOARD_ALREADY_WATCHED`.
+- `update_watched_company`: `{ requestId, watchId, expectedVersion, boards?, interestLevel?, websiteUrl?, companyNotes? }`.
+  At least one field; `boards` replaces the whole set; identical values are a no-op.
+- `set_company_watch_status`: `{ requestId, watchId, expectedVersion, active }`. Pauses or resumes
+  monitoring while preserving configuration.
+- `delete_watched_company` (decision 021): `{ requestId, watchId, expectedVersion, confirmed: true }`.
+  Read one explicit watch and obtain the user's confirmation first. Deletes the watch and boards,
+  retaining the company, applications, notes, and audit history. Returns `deleted: true`; `version`
+  is the final revision, not an editable record. Re-adding creates a new watch ID. Stale deletion
+  needs a fresh read and confirmation; retry a lost response with the identical command/request ID.
+
+Watch mutation results use the shape below with `watchId`, `companyId`, `company`, and `active`
+in place of `applicationId`. `before` / `after` hold only scalar fields; company-notes text is
+reported only as a changed field name.
 
 ## Mutation result contract
 

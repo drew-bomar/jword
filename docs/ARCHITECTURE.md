@@ -7,7 +7,7 @@ Implemented as described below. Concrete locations:
 | Layer            | Where                                                                                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Web entry points | `src/server/actions/*.ts` (Server Actions), `src/server/auth/session.ts` (`requireSession`), `src/proxy.ts` (session refresh + redirect)                                                                           |
-| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                                                           |
+| MCP entry points | `packages/mcp-server/src/tools.ts` (9 tools), `watchlist-tools.ts` (7 tools), `packages/mcp-server/src/index.ts` (stdio)                                                                                           |
 | Posting capture  | `packages/extension` (Chrome extension: reads postings, in-page overlay), `src/app/api/extension/*` + `src/server/extension-api.ts` (capture API), `src/features/capture` (review UI), `packages/core/src/capture` |
 | Shared services  | `packages/core/src/services/index.ts` (`createTrackerServices`)                                                                                                                                                    |
 | Validation       | `packages/core/src/validation/schemas.ts` (Zod, strict objects)                                                                                                                                                    |
@@ -52,7 +52,7 @@ flowchart TD
 
 ### Web server entry points
 
-Use Next.js Server Actions for web mutations. Next.js handles the browser's HTTP POST request and dispatches it to the action; the browser does not execute database code. Each action verifies the caller and passes a validated command to the shared service. Use Server Components for server-rendered reads through the shared service layer. Reserve Route Handlers for explicit HTTP needs such as an authentication callback; do not create a parallel REST mutation API for the tracker. See [decision 005](decisions/005-web-server-actions.md). The one exception is the capture extension's five origin-restricted endpoints ([decision 017](decisions/017-extension-overlay-capture-api.md)).
+Use Next.js Server Actions for web mutations. Next.js handles the browser's HTTP POST request and dispatches it to the action; the browser does not execute database code. Each action verifies the caller and passes a validated command to the shared service. Use Server Components for server-rendered reads through the shared service layer. Reserve Route Handlers for explicit HTTP needs such as an authentication callback; do not create a parallel REST mutation API for the tracker. See [decision 005](decisions/005-web-server-actions.md). The one exception is the capture extension's origin-restricted endpoints ([decision 017](decisions/017-extension-overlay-capture-api.md)).
 
 Responsibilities:
 
@@ -314,7 +314,7 @@ Approved in [decision 016](decisions/016-browser-extension-capture.md), with the
 an in-page overlay by [decision 017](decisions/017-extension-overlay-capture-api.md). A Chrome
 extension reads a job posting and draws a review panel in the job tab. The panel is an extension
 page in a closed shadow root, pinned right and pushing the page over. It reaches jword only
-through the extension's background worker. The worker calls five origin-restricted JSON endpoints
+through the extension's background worker. The worker calls eight origin-restricted JSON endpoints
 with the owner's normal session cookie. The extension holds no credentials of its own.
 
 ```mermaid
@@ -337,3 +337,90 @@ flowchart LR
 - `src/server/extension-origin.ts` / `extension-api.ts`: the Origin check (the extension id is
   pinned by the manifest `key` and configured as `JWORD_EXTENSION_ID`), then `requireSession`, then
   the handler. `src/proxy.ts` answers these paths with the handler's 401 rather than a redirect.
+
+## Company watchlist (2026-09-22)
+
+Approved in [decision 018](decisions/018-company-watchlist.md) as step 1 of the discovery
+roadmap. The owner records which companies' public Greenhouse, Lever, or Ashby boards jword
+should monitor. It is configuration only: no postings are fetched or stored, and nothing is
+scheduled.
+
+```mermaid
+flowchart LR
+    W["/watchlist (client form)"] --> A["Server Action: requireSession + owner lock"]
+    C["Coding agent"] --> T["MCP watchlist tools (actor CODEX)"]
+    A --> S["createWatchlistServices (Zod)"]
+    T --> S
+    S --> R["Repository (owner-scoped)"]
+    R --> F["create/update_company_watch, set_company_watch_active"]
+    F --> DB["watch row + company fields + audit row + version + receipt"]
+```
+
+| Layer          | Where                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| Page and UI    | `src/app/watchlist/page.tsx`, `src/features/watchlist/*`                                 |
+| Server Actions | `src/server/actions/watchlist.ts`                                                        |
+| Pure rules     | `packages/core/src/watchlist/boards.ts` (URL inference), `schemas.ts`, `types.ts`        |
+| Service        | `packages/core/src/services/watchlist.ts`, spread into `createTrackerServices`           |
+| Repository     | `WatchlistRepository` in `repositories/types.ts`; Supabase and in-memory implementations |
+| MCP            | `packages/mcp-server/src/watchlist-tools.ts`                                             |
+| Database       | `supabase/migrations/20260922000100_company_watchlist.sql`                               |
+
+- A watch belongs to one company (`company_watches`, composite owner FK, one watch per company,
+  one board per owner). Interest level, website, and notes stay on `companies` and are edited
+  through the watch functions.
+- Supported providers derive their board URL from the identifier. `OTHER` keeps an optional
+  careers URL. The UI pre-fills from a pasted URL with a pure function; the server validates
+  the final values again.
+- Every write is atomic with a `company_watch_activities` row and a retry receipt. Updates and
+  status changes use `expectedVersion`. Decision 021 adds confirmed deletion using that same
+  version and retry contract. Watch/board rows are deleted; company/application data and audit
+  history remain. Deactivate continues to pause monitoring.
+- Future seam: a per-provider `BoardAdapter.listPostings(board)` in core, called by a later
+  "Verify board" action and by collection. Collection state lives in the collection ticket's
+  own table.
+
+### Board discovery (2026-09-23)
+
+[Decision 019](decisions/019-board-discovery.md): a watch has up to three boards in
+`company_watch_boards`, and jword finds them. `discoverCompanyBoards` combines saved application
+links with lookups on Greenhouse, Lever, and Ashby's public APIs, using names generated from the
+company name and website, and ranks each board with reasons. The owner, or the agent following
+AGENTS.md, picks which to keep. [Decision 022](decisions/022-workday-boards.md) adds Workday:
+recognized from saved or pasted links and checked, never guessed from a name. Supplied board
+links (`boardUrls`) are checked first for every provider.
+
+```mermaid
+flowchart LR
+    F["Add dialog: company typed or link pasted"] --> A["GET /api/watchlist/boards (session)"]
+    A --> S["discoverCompanyBoards"]
+    S --> L["Saved job URLs (repository)"]
+    S --> D["BoardDirectory: Greenhouse, Lever, Ashby, Workday (provider hosts, timeouts)"]
+    S --> R["rateBoard: high / medium / low + reasons"]
+    R --> F
+```
+
+- The directory is injected into the services (`src/server/services.ts`,
+  `packages/mcp-server/src/index.ts`). Tests use `createFixtureBoardDirectory`, and Playwright
+  sets `JWORD_BOARD_DIRECTORY=fixtures`.
+- `suggestWatchesFromApplications` (local only) powers "Suggest from applications".
+- Still no job collection, storage, or schedule; those are the next discovery steps.
+
+#### Reliability amendment (decision 020)
+
+Browser watchlist reads now use `/api/watchlist/{boards,companies,suggestions}` GET handlers with
+session/owner checks and `private, no-store` JSON responses. They call the same services as MCP.
+This keeps provider requests cancellable and out of Next.js's sequential mutation queue.
+Discovery caps all evidence sources together at 15 probes and 12 seconds of service work.
+Public evidence alone is cached for five minutes with bounded concurrency/storage; local ownership
+reads stay fresh. Partial failures and unknown board ownership are explicit in the result. See
+[decision 020](decisions/020-watchlist-reliability.md) for the complete contract and tradeoffs.
+
+### Board capture and verification (decision 023)
+
+The extension can add a watch from the recognized current board, without an application or a
+pasted URL. Its `search-companies`, `verify-boards`, and `add-watch` endpoints reuse the owner
+session and shared watchlist services. Verification probes only supplied recognized URLs;
+full discovery also uses direct board URLs in the company website field. Legacy Other links
+are upgraded explicitly in place. Public evidence cache identity matches database uniqueness.
+See [decision 023](decisions/023-watch-capture-and-board-verification.md) for the boundary and tradeoff.

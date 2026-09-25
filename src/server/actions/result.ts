@@ -7,6 +7,10 @@ export interface ActionError {
   fieldErrors?: Record<string, string[]>;
   candidates?: DuplicateCandidate[];
   currentVersion?: number;
+  /** Watchlist conflicts: the existing watch and its company. */
+  watchId?: string;
+  watchActive?: boolean;
+  company?: string;
 }
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: ActionError };
@@ -38,6 +42,9 @@ export async function runAction<T>(
         fieldErrors: typed.details.fieldErrors,
         candidates: typed.details.candidates,
         currentVersion: typed.details.currentVersion,
+        watchId: typed.details.watchId,
+        watchActive: typed.details.watchActive,
+        company: typed.details.company,
       },
     };
   }

@@ -1,12 +1,13 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { XIcon } from "lucide-react";
-import type { CapturedPosting } from "@jword/core/browser";
+import { inferBoardFromUrl, type CapturedPosting } from "@jword/core/browser";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { WatchCaptureReview } from "@/features/capture/watch-review";
 import { CaptureReview } from "@/features/capture/capture-review";
 import type { OverlayCapture } from "../messages";
-import { ask, backgroundApi } from "./client";
+import { ask, backgroundApi, backgroundWatchApi } from "./client";
 
 /**
  * The in-page capture overlay (decision 017): an extension page framed into the job tab by
@@ -23,6 +24,13 @@ const nonce = location.hash.slice(1);
 
 function Overlay() {
   const [state, setState] = useState<State>({ phase: "loading" });
+  const [mode, setMode] = useState<"application" | "watch">("application");
+  const [busy, setBusy] = useState(false);
+  const watchApi = useMemo(() => backgroundWatchApi(nonce), []);
+  const board =
+    state.phase === "ready"
+      ? (inferBoardFromUrl(state.posting.pageUrl) ?? inferBoardFromUrl(state.posting.jobUrl ?? ""))
+      : null;
   const api = useMemo(() => backgroundApi(nonce), []);
 
   useEffect(() => {
@@ -55,6 +63,7 @@ function Overlay() {
             size="icon"
             variant="ghost"
             aria-label="Close jword capture"
+            disabled={busy}
             onClick={() => void ask({ type: "jword:overlay-close", nonce }).catch(() => {})}
           >
             <XIcon />
@@ -70,11 +79,48 @@ function Overlay() {
           </Alert>
         ) : (
           <>
-            <p className="text-muted-foreground text-sm">
-              Review what was read from the posting, then add it or update an application you
-              already track. Nothing is saved until you confirm.
-            </p>
-            <CaptureReview posting={state.posting} api={api} jwordUrl={state.jwordUrl} />
+            {board ? (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={mode === "application" ? "default" : "outline"}
+                  disabled={busy}
+                  onClick={() => setMode("application")}
+                >
+                  Capture job
+                </Button>
+                <Button
+                  type="button"
+                  variant={mode === "watch" ? "default" : "outline"}
+                  disabled={busy}
+                  onClick={() => setMode("watch")}
+                >
+                  Watch this company
+                </Button>
+              </div>
+            ) : null}
+            {mode === "watch" && board ? (
+              <WatchCaptureReview
+                company={state.posting.company ?? ""}
+                board={board}
+                api={watchApi}
+                jwordUrl={state.jwordUrl}
+                onBusyChange={setBusy}
+              />
+            ) : (
+              <>
+                <p className="text-muted-foreground text-sm">
+                  Review what was read from the posting, then add it or update an application you
+                  already track. Nothing is saved until you confirm.
+                </p>
+                <CaptureReview
+                  posting={state.posting}
+                  api={api}
+                  jwordUrl={state.jwordUrl}
+                  onBusyChange={setBusy}
+                />
+              </>
+            )}
           </>
         )}
       </main>

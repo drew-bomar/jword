@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import { assertBoardDirectoryEnvironment } from "./src/server/board-directory-env";
+
+assertBoardDirectoryEnvironment(process.env);
 
 const nextConfig: NextConfig = {
   // Browser tests can run alongside the owner's existing development server.

@@ -2,6 +2,238 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Workday review fixes and watch capture (2026-09-25)
+
+Latest owner verification: Chrome extension **Watch this company** successfully added a watch
+after pointing extension Options to `http://localhost:3200`. The Vercel address returned 404 for
+the new operations because this code is not deployed yet.
+
+Local setup until deployment: run `pnpm dev --port 3200`, sign in at `http://localhost:3200`, and
+set the same address in the extension's Options (sign-in and Options must use one origin). After
+extension changes run `pnpm ext:build`, reload jword in `chrome://extensions`, and refresh the
+board tab. Reloading the extension never deploys the web app. A local web app may still use the
+hosted database, so check `.env.local` rather than assuming the target from the address.
+
+Implemented [decision 023](decisions/023-watch-capture-and-board-verification.md). The extension
+recognizes both Workday URL families and offers **Watch this company** on a recognized board or
+posting. It confirms the company and saves a watch without requiring an application or copied
+URL. Existing watches are linked for editing, never silently changed. Discovery now uses direct
+board links in the company website field. Pasted/explicitly upgraded boards use verification-only
+checks; legacy Other links upgrade in place. Case variants share the provider evidence cache.
+
+Runtime: toolbar → shared URL parser → extension watch review → background worker →
+`/api/extension/{search-companies,verify-boards,add-watch}` → extension Origin + owner session →
+shared watchlist services → repository → atomic watch/audit/request-receipt transaction.
+Verification calls only the recognized provider endpoint, through the bounded public-evidence
+cache. No owner data is cached and no job postings are stored.
+
+Files worth understanding:
+
+- `src/features/capture/watch-review.tsx`: company confirmation, verification and reliable save.
+- `packages/core/src/services/watchlist.ts`: full discovery versus verification-only behavior.
+- `packages/core/src/watchlist/selection.ts`: explicit legacy-link replacement without duplicates.
+- `packages/extension/src/overlay/client.ts`: typed extension operations through the worker.
+- `docs/decisions/023-watch-capture-and-board-verification.md`: API boundary and tradeoff.
+
+Tradeoff: recognizing the current board avoids broad searches and extra browser permissions,
+but it cannot discover unseen Workday sites from a company name. The Workday website endpoint
+is still undocumented. Its failure produces an unverified result requiring confirmation in
+extension capture.
+
+Checks: formatting, lint, all typechecks, 322 unit tests and 52 local database integration tests
+pass. Web production build (`JWORD_E2E=1 pnpm build --webpack`), extension build and MCP build
+pass. Added browser tests for watch capture without an application, a lost-response retry,
+extension endpoint authorization, verification-only input, and upgrading a full legacy board
+selection. Codex's sandbox could not start Playwright (`EPERM` on port 3100); Claude then ran the
+full suite locally on 2026-09-25: 49 passed, 24 intentional desktop/mobile skips, and one failure
+in the older "Edit details can reopen after a successful save" test that passed 18 of 18 isolated
+repeats (flaky under full-suite load; not caused by this work, worth hardening later).
+
+No new migration was added in this follow-up. The owner's `supabase migration list --linked` on
+2026-09-25 showed both decision-022 Workday migrations applied to the hosted database, so hosted
+schema is current; the code is not yet deployed to Vercel.
+
+Manual handoff: reload the built extension in `chrome://extensions`, refresh a Workday tab,
+choose **Watch this company**, confirm/save, and check that only a watch was created. Reopen
+capture to check the existing-watch notice. In the web picker, test a direct Workday Website
+link and **Use Workday board** on an old Other link; its selected count should not increase.
+Full steps are in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md#workday-review-fixes-and-extension-watch-capture-decision-023).
+
+## Workday boards (JWO-16 follow-up, 2026-09-24)
+
+[Decision 022](decisions/022-workday-boards.md). Workday boards are part of board discovery:
+recognized from `myworkdayjobs.com` and `myworkdaysite.com` links (board pages and postings,
+with or without a locale), stored as `account/cluster/site`, and checked with one small request.
+They are never guessed from a company name. Discovery now also checks up to three board links
+the owner supplies (`boardUrls`); the picker sends the selected boards, so a pasted link of any
+provider shows whether it exists. No postings are stored and nothing runs on a schedule.
+
+Runtime: pasted link → `inferBoardFromUrl` → board picker → `GET /api/watchlist/boards?boardUrls=…`
+→ `discoverCompanyBoards` → cached `BoardDirectory.probe("WORKDAY", …)` → POST
+`{account}.{cluster}.myworkdayjobs.com/wday/cxs/{account}/{site}/jobs`. Save → Server Action →
+same service → `create_company_watch` → `jword.canonical_board_url` in the table check.
+
+Files worth understanding:
+
+- `packages/core/src/watchlist/boards.ts`: identity rules, URL families, supported vs guessable.
+- `packages/core/src/discovery/directory.ts`: the Workday check and its failure mapping.
+- `supabase/migrations/20260924000300_workday_boards.sql`: the SQL mirror of those rules.
+- `tests/fixtures/watch-board-contract.ts`: cases run against both Zod and SQL.
+
+Tradeoff: the Workday endpoint is undocumented. Its `total` is capped (2000 is shown as 2000+) and
+only 404 counts as missing, so failures read as unverified rather than absent.
+
+Verification (local stack only): `pnpm check` (312 unit tests), `pnpm test:integration` (52),
+`pnpm test:e2e` (47 passed, 21 intentional desktop/mobile skips), `pnpm mcp:build`, and
+`JWORD_E2E=1 pnpm build --webpack` passed. A live check found NVIDIA (2000+), Salesforce (1531),
+and reported a non-existent site as missing. `database.types.ts` was regenerated with `pnpm db:types`.
+
+**Migrations:** `20260924000200_workday_provider.sql` and `20260924000300_workday_boards.sql`
+were applied to the hosted database by the owner (confirmed with `supabase migration list --linked`
+on 2026-09-25). Deploy the matching code, then follow **Workday boards** in
+[MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md).
+
+## Confirmed watch deletion (2026-09-24)
+
+Manual-test follow-up: the running app's `.env.local` uses hosted Supabase, while `.env.test.local`
+uses the local stack. The repeated unconfirmed-delete report may be the missing hosted migration;
+the hosted schema could not be inspected here (DNS lookup failed, and the CLI dry run hit a
+telemetry filesystem sandbox denial). Hosted migration state still needs verification.
+
+The error mapper previously treated a missing RPC function as an unknown mutation outcome.
+It now returns `INTERNAL_ERROR / DATABASE_FUNCTION_UNAVAILABLE` with a database-update message.
+PostgREST's [PGRST202 definition](https://docs.postgrest.org/en/stable/references/errors.html#group-2-schema-cache)
+identifies a missing/stale function signature before execution. A first attempt rejected this way
+remains dismissible; a retry after an earlier unknown outcome still retains its original request,
+since the latest rejection cannot prove what happened earlier. Runtime: database API error →
+`packages/core/src/repositories/errors.ts` → Server Action result →
+`src/lib/mutations/attempt.ts` → dialog lock state. `pnpm check` passed with 257 unit tests,
+including first-rejection recovery and preserved retries after lost responses. No hosted changes
+were made. After applying pending hosted migrations, retry the original deletion to verify.
+
+The owner confirmed the previous review fixes through manual testing, then requested full removal
+from the watchlist. [Decision 021](decisions/021-watch-deletion.md) adds Delete to desktop rows and
+mobile cards, with a confirmation naming the company. Cancel leaves it alone. Confirming deletes
+its watch/board configuration while preserving the company, notes, applications, and audit history.
+Deactivate still pauses monitoring. Re-adding creates a new watch ID; companies with applications
+may appear in Suggest from applications again.
+
+Runtime: DeleteWatchDialog → deleteWatchAction (session) → deleteWatchedCompany (shared validation)
+→ Supabase repository → delete_company_watch (ownership, version, audit, deletion, receipt in one
+transaction). MCP's delete_watched_company enters the same service and requires confirmed=true.
+Lost responses retain the exact original retry; stale versions require a fresh confirmation.
+
+Files worth understanding:
+
+- `src/features/watchlist/delete-watch-dialog.tsx`: confirmation, cancel, and unresolved retries.
+- `packages/core/src/services/watchlist.ts`: the shared delete service and boundary validation.
+- `supabase/migrations/20260924000100_delete_company_watch.sql`: atomic deletion and audit retention.
+
+Tradeoff: the live watch is deleted, while audit rows keep their historical original_watch_id
+and clear the live foreign key. This preserves history and releases board/company uniqueness
+without adding hidden watches to every read. There is no restore action; re-add chooses boards anew.
+
+The new migration was applied locally only. Apply pending migrations and deploy matching code
+before testing hosted. Follow **Delete a watch** in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md).
+
+Verification: `pnpm check` passed (formatting, lint, all TypeScript projects, 254 unit tests),
+`pnpm test:integration` passed all 49 tests, and the web production/MCP builds passed.
+Desktop/mobile browser tests were added, but Playwright could not start its server because this
+environment rejects binding port 3100 (`EPERM`); owner manual verification is still needed.
+Database type generation also hit a sandbox denial writing Supabase CLI telemetry outside the
+workspace, so the small type changes were synchronized to the migration manually and typechecked.
+Regenerate with `pnpm db:types` in the normal local environment when convenient.
+
+## Watchlist review fixes (JWO-16 follow-up, 2026-09-23)
+
+[Decision 020](decisions/020-watchlist-reliability.md) records the owner-approved review fixes.
+Changing company clears its old board selection; cancelled lookups cannot add old results.
+Selecting an existing company with the same name preserves explicitly unticked boards.
+Reactivation means making an existing inactive watch active again. If its response is lost,
+the dialog retains that exact command for retry instead of permitting a conflicting Add.
+The tracker Edit details dialog also reopens after saving.
+
+Discovery uses cancellable authenticated GET requests so slow providers do not queue ahead of
+Save. It has total request/time limits, shared bounded public-evidence caching, validated provider
+responses, an Ashby documented-API fallback, explicit partial-result warnings, and a local-only
+test-fixture guard. Failed optional database reads can reduce evidence; authorization failures
+still stop the request. Unknown board ownership disables automatic selection.
+
+The database now preserves retained board IDs during replacement/reorder, rejects duplicate
+canonical URLs consistently, reports concurrent board claims correctly, and uses the same
+company-before-watch lock order for create and update to avoid deadlocks. Saves still write the
+change, audit record, version, and retry receipt atomically.
+
+Runtime: browser reads → authenticated `/api/watchlist/*` GET → shared service → owner-scoped
+repository + public directory. Browser mutations → Server Action → shared service → Postgres
+transaction. MCP calls those same services.
+
+Five files worth understanding:
+
+- `src/features/watchlist/watch-form.tsx`: company selection and unresolved-save retries.
+- `packages/core/src/services/watchlist.ts`: evidence, partial failures, and discovery limits.
+- `packages/core/src/discovery/cache.ts`: shared public probes and independent cancellation.
+- `packages/core/src/discovery/directory.ts`: provider response validation and Ashby fallback.
+- `supabase/migrations/20260923000200_watchlist_review.sql`: board reconciliation and locking.
+
+Tradeoff: cached public details can be five minutes old. Ownership is read fresh and checked
+again inside each save. The cache bounds work per process; it is not a distributed rate limiter.
+Removed boards are still deleted configuration; future job collection must decide how to retain
+source history. A future company editor must also revisit the shared watch/company version.
+
+Verification: formatting, lint, all TypeScript checks, 252 unit tests, 45 integration tests,
+the web production build, and the MCP build passed. New browser regression tests were added,
+but could not run here: the environment rejected binding the Playwright server to port 3100
+with `EPERM`. Live provider behavior and hosted deployment were not tested.
+
+Migration `20260923000200_watchlist_review.sql` was applied locally only. Before testing hosted,
+apply pending migrations with `pnpm exec supabase db push` and deploy the matching code.
+The next owner task is the **Watchlist review regression checks** section in
+[MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md): switch companies and preserve unticked choices;
+save during a slow lookup and retry failed reads; deactivate/reactivate including a lost response;
+save and reopen Edit details. Run `pnpm test:e2e` in an environment that can start
+the local web server before closing this follow-up.
+
+## Board discovery (JWO-16 follow-up, 2026-09-23)
+
+[Decision 019](decisions/019-board-discovery.md). Branch `claude/board-discovery`, stacked on
+`claude/jwo-16-company-watchlist`. Adding a company now looks up its boards: saved application
+links plus the public Greenhouse, Lever, and Ashby APIs. Results are ranked with reasons and
+strong matches are pre-ticked; the owner confirms. A company can have up to three boards
+(`company_watch_boards`, capped by the database). "Suggest from applications" watches
+already-applied companies in one step. MCP gains `discover_company_boards` and
+`suggest_watches_from_applications`.
+
+Hosted step (owner): `pnpm exec supabase db push` applies `20260923000100_watch_boards.sql`,
+which moves existing boards into the new table. Then deploy; the old page code does not work
+after this migration, so push and deploy together.
+
+## Company watchlist (JWO-16, 2026-09-22)
+
+[Decision 018](decisions/018-company-watchlist.md). Branch `claude/jwo-16-company-watchlist`.
+The owner can list, search, filter, add, edit, deactivate, and reactivate watched companies at
+`/watchlist`. Each watch records a Greenhouse, Lever, Ashby, or Other board configuration. It is
+configuration only: nothing fetches, stores, schedules, or ranks postings. The 90-minute study
+guide is [WATCHLIST_ARCHITECTURE_WALKTHROUGH.md](WATCHLIST_ARCHITECTURE_WALKTHROUGH.md).
+
+Runtime path: `WatchForm` → `addWatchAction` (`requireSession`) → `addWatchedCompany` (Zod) →
+`SupabaseTrackerRepository.createWatch` → `public.create_company_watch` → `jword.create_company_watch`
+(company match-or-create, watch row, audit row, receipt in one transaction). MCP tools call the
+same services with actor `CODEX`.
+
+Hosted step (owner): migration `20260922000100_company_watchlist.sql` was applied only to the
+local stack. Apply it to hosted with `pnpm exec supabase db push` (the repo is already linked),
+then deploy. The page errors until the migration exists on hosted.
+
+Verification (local stack): `pnpm check` (197 unit tests), `pnpm test:integration` (39),
+`pnpm test:e2e` (34 passed, 14 intentional desktop/mobile skips), `pnpm mcp:build`,
+`JWORD_E2E=1 pnpm build --webpack`, and a stdio smoke of the built MCP server (14 tools, add +
+list, CODEX audit). No hosted data was touched and no external service was called.
+
+Found while testing: the tracker's Edit details dialog cannot be reopened after a save until the
+page reloads (its busy flag stays set when the form unmounts). The watchlist dialogs reset it;
+the tracker fix is a separate one-line change.
+
 ## In-page capture overlay (2026-09-22)
 
 [Decision 017](decisions/017-extension-overlay-capture-api.md) replaces the side panel below with a

@@ -44,6 +44,9 @@ export function mapDatabaseError(
           details.currentVersion = parsed.currentVersion;
         if (typeof parsed.expectedVersion === "number")
           details.expectedVersion = parsed.expectedVersion;
+        if (typeof parsed.watchId === "string") details.watchId = parsed.watchId;
+        if (typeof parsed.watchActive === "boolean") details.watchActive = parsed.watchActive;
+        if (typeof parsed.company === "string") details.company = parsed.company;
       } catch {
         // detail was not JSON; ignore
       }
@@ -63,6 +66,15 @@ export function mapDatabaseError(
       databaseCode: /^[A-Z0-9]{1,12}$/.test(code) ? code : "TRANSPORT_ERROR",
     }),
   );
+  // PostgREST rejects a missing/stale RPC signature before executing any SQL. This is
+  // a setup failure, not evidence of a lost mutation response. Keep raw details private.
+  if (code === "PGRST202") {
+    return new JwordError(
+      "INTERNAL_ERROR",
+      "This action is not available in the connected database. Complete the database update, then try again.",
+      { reason: "DATABASE_FUNCTION_UNAVAILABLE" },
+    );
+  }
   if (!mutation)
     return new JwordError("INTERNAL_ERROR", `${operation} could not be loaded. Try again.`);
   // A SQL error confirms rollback. Transport/gateway failures do not prove that a

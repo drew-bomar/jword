@@ -52,7 +52,7 @@ const PROTOCOL =
 // ---------------------------------------------------------------------------
 // Result helpers
 // ---------------------------------------------------------------------------
-function json(value: unknown, isError = false): CallToolResult {
+export function json(value: unknown, isError = false): CallToolResult {
   const result: CallToolResult = {
     content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
     isError,
@@ -76,10 +76,13 @@ interface ToolFailure {
     currentVersion?: number;
     expectedVersion?: number;
     fieldErrors?: Record<string, string[]>;
+    watchId?: string;
+    watchActive?: boolean;
+    company?: string;
   };
 }
 
-function failure(operation: string, error: unknown, requestId?: string): CallToolResult {
+export function failure(operation: string, error: unknown, requestId?: string): CallToolResult {
   const typed = isJwordError(error)
     ? error
     : {
@@ -104,6 +107,11 @@ function failure(operation: string, error: unknown, requestId?: string): CallToo
         ? { expectedVersion: typed.details.expectedVersion }
         : {}),
       ...(typed.details.fieldErrors ? { fieldErrors: typed.details.fieldErrors } : {}),
+      ...(typed.details.watchId ? { watchId: typed.details.watchId } : {}),
+      ...(typed.details.watchActive !== undefined
+        ? { watchActive: typed.details.watchActive }
+        : {}),
+      ...(typed.details.company ? { company: typed.details.company } : {}),
     },
   };
   return json(body, true);
@@ -128,13 +136,13 @@ function success(result: MutationResult): CallToolResult {
   });
 }
 
-const READ_ONLY = {
+export const READ_ONLY = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
 };
-const MUTATING = {
+export const MUTATING = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: true,

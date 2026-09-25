@@ -113,6 +113,22 @@ describe("site extractors", () => {
     expect(p.description).toBe("Validate silicon.\n\n• Write tests");
   });
 
+  it("Workday recruiting URLs identify the account, not the wd5 host", () => {
+    expect(
+      capture(
+        "workday.html",
+        "https://wd5.myworkdaysite.com/en-US/recruiting/acme/External/job/Engineer_JR1",
+      ),
+    ).toMatchObject({ company: "Acme", guessed: ["company"] });
+  });
+
+  it("unknown Workday URLs preserve the JSON-LD company instead of guessing a cluster", () => {
+    expect(capture("workday.html", "https://wd5.myworkdaysite.com/unrecognized")).toMatchObject({
+      company: "2100 ACME USA",
+      guessed: [],
+    });
+  });
+
   it("LinkedIn: top card fields and a canonical job URL from a search page", () => {
     const p = capture(
       "linkedin.html",

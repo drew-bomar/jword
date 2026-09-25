@@ -60,3 +60,12 @@ See [SITES.md](SITES.md), including how to add a site.
 - `pnpm vitest run --project unit packages/extension`: extractors and the worker's API client.
 - `pnpm test:e2e tests/e2e/extension.spec.ts`: loads the built extension into Chromium.
 - `pnpm test:e2e tests/e2e/extension-api.spec.ts`: the API's Origin, session, and field checks.
+
+### Watch a company without an application
+
+On a supported job-board page, click the jword toolbar icon and choose **Watch this company**.
+Confirm the company (or select an existing one), review the board check, then **Add to watchlist**.
+Workday board landing pages and postings are both supported, including `myworkdaysite.com`
+recruiting links. No URL copying or application is required. Already-watched companies link to
+the watchlist for editing. After rebuilding the extension, reload it in `chrome://extensions`
+and refresh the job-board tab to load the new action.

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "../db/database.types";
 import type { ApplicationStatus } from "../domain/enums";
 import { JwordError } from "../domain/errors";
+import { normalizeName } from "../domain/normalize";
 import type {
   ApplicationActivity,
   ApplicationDetail,
@@ -23,9 +24,26 @@ import type {
   UpdateApplicationNoteCommand,
   UpdateApplicationStatusCommand,
 } from "../validation/schemas";
+import type {
+  AddWatchedCompanyCommand,
+  DeleteWatchedCompanyCommand,
+  SetCompanyWatchStatusCommand,
+  UpdateWatchedCompanyCommand,
+} from "../watchlist/schemas";
+import type {
+  CompanyOption,
+  CompanyRef,
+  SafeWatchValue,
+  WatchBoard,
+  WatchSummary,
+  WatchActivity,
+  WatchedCompany,
+  WatchListQuery,
+  WatchMutationResult,
+} from "../watchlist/types";
 import { decodeCursor, encodeCursor, filterKeyFor } from "./cursor";
 import { mapDatabaseError } from "./errors";
-import type { MutationContext, PageRequest, TrackerRepository } from "./types";
+import type { MutationContext, PageRequest, TrackerRepository, WatchlistRepository } from "./types";
 
 export type JwordSupabaseClient = SupabaseClient<Database>;
 
@@ -33,6 +51,8 @@ type OverviewRow = Database["public"]["Views"]["application_overview"]["Row"];
 type NoteRow = Database["public"]["Tables"]["application_notes"]["Row"];
 type ActivityRow = Database["public"]["Tables"]["application_activities"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["candidate_profiles"]["Row"];
+type WatchRow = Database["public"]["Views"]["company_watch_overview"]["Row"];
+type WatchActivityRow = Database["public"]["Tables"]["company_watch_activities"]["Row"];
 
 const SORT_COLUMNS = {
   updated: "last_activity_at",
@@ -110,6 +130,72 @@ function mapProfile(row: ProfileRow): CandidateProfile {
   };
 }
 
+function mapWatch(row: WatchRow): WatchedCompany {
+  return {
+    watchId: row.watch_id!,
+    companyId: row.company_id!,
+    company: row.company_name!,
+    boards: (Array.isArray(row.boards) ? row.boards : []) as unknown as WatchBoard[],
+    active: row.active!,
+    version: row.version!,
+    interestLevel: row.interest_level,
+    websiteUrl: row.website_url,
+    companyNotes: row.company_notes,
+    applicationCount: row.application_count ?? 0,
+    lastEvent:
+      row.last_event_type && row.last_event_actor_type && row.last_event_at
+        ? {
+            type: row.last_event_type,
+            actorType: row.last_event_actor_type,
+            summary: row.last_event_summary ?? "",
+            occurredAt: row.last_event_at,
+          }
+        : null,
+    createdAt: row.created_at!,
+    updatedAt: row.updated_at!,
+  };
+}
+
+function mapWatchActivity(row: WatchActivityRow): WatchActivity {
+  return {
+    activityId: row.id,
+    watchId: row.original_watch_id,
+    type: row.type,
+    actorType: row.actor_type,
+    summary: row.summary,
+    metadata: (row.metadata ?? {}) as Record<string, unknown>,
+    occurredAt: row.occurred_at,
+    createdAt: row.created_at,
+  };
+}
+
+function asWatchResult(value: Json, operation: string): WatchMutationResult {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  if (typeof raw !== "object" || Array.isArray(raw) || raw.ok !== true) {
+    throw new JwordError("INTERNAL_ERROR", `${operation} returned an unexpected result.`);
+  }
+  const record = (entry: unknown) => (entry ?? {}) as Record<string, SafeWatchValue>;
+  return {
+    ok: true,
+    operation: String(raw.operation ?? operation),
+    requestId: String(raw.requestId ?? ""),
+    replayed: raw.replayed === true,
+    noop: raw.noop === true,
+    watchId: String(raw.watchId ?? ""),
+    companyId: String(raw.companyId ?? ""),
+    company: String(raw.company ?? ""),
+    ...(typeof raw.companyCreated === "boolean" ? { companyCreated: raw.companyCreated } : {}),
+    ...(raw.deleted === true ? { deleted: true } : {}),
+    active: raw.active === true,
+    version: typeof raw.version === "number" ? raw.version : 0,
+    activityId: typeof raw.activityId === "string" ? raw.activityId : null,
+    summary: String(raw.summary ?? ""),
+    changedFields: Array.isArray(raw.changedFields) ? (raw.changedFields as string[]) : [],
+    before: record(raw.before),
+    after: record(raw.after),
+  };
+}
+
 /** PostgREST `or()` filter values: strip characters with syntax meaning and wildcards. */
 function sanitizeSearchText(text: string): string {
   return text.replace(/[%_,()"'\\]/g, " ").trim();
@@ -153,7 +239,7 @@ function asMutationResult(value: Json, operation: string): MutationResult {
  * (web; RLS applies) or the local service-role client (MCP; RLS bypassed, so every query
  * filters by user_id and every RPC passes the owner explicitly).
  */
-export class SupabaseTrackerRepository implements TrackerRepository {
+export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRepository {
   constructor(private readonly client: JwordSupabaseClient) {}
 
   async searchApplications(
@@ -400,5 +486,233 @@ export class SupabaseTrackerRepository implements TrackerRepository {
     if (!profile)
       throw new JwordError("INTERNAL_ERROR", "Profile was saved but could not be read back.");
     return profile;
+  }
+  // ------------------------------------------------------------ watchlist
+  async listWatches(userId: string, query: WatchListQuery): Promise<Page<WatchedCompany>> {
+    const { cursor, limit, ...filters } = query;
+    const filterKey = filterKeyFor({ ...filters, userId, watches: true });
+    const offset = decodeCursor(cursor, filterKey);
+    let request = this.client.from("company_watch_overview").select("*").eq("user_id", userId);
+    const text = query.text ? sanitizeSearchText(query.text) : "";
+    if (text) request = request.ilike("company_name", `%${text}%`);
+    if (query.active !== undefined) request = request.eq("active", query.active);
+    if (query.provider) request = request.contains("board_providers", [query.provider]);
+    const { data, error } = await request
+      .order("company_name", { ascending: true })
+      .order("watch_id", { ascending: true })
+      .range(offset, offset + limit);
+    if (error) throw mapDatabaseError(error, "list watched companies");
+    const rows = (data ?? []) as WatchRow[];
+    const hasMore = rows.length > limit;
+    return {
+      items: rows.slice(0, limit).map(mapWatch),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(offset + limit, filterKey) : null,
+    };
+  }
+
+  async getWatch(userId: string, watchId: string): Promise<WatchedCompany | null> {
+    const { data, error } = await this.client
+      .from("company_watch_overview")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("watch_id", watchId)
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "get watched company");
+    return data ? mapWatch(data as WatchRow) : null;
+  }
+
+  async listWatchActivity(
+    userId: string,
+    watchId: string,
+    page: PageRequest,
+  ): Promise<Page<WatchActivity>> {
+    const filterKey = filterKeyFor({ watchActivity: watchId, userId });
+    const offset = decodeCursor(page.cursor, filterKey);
+    const { data, error } = await this.client
+      .from("company_watch_activities")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("original_watch_id", watchId)
+      .order("occurred_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(offset, offset + page.limit);
+    if (error) throw mapDatabaseError(error, "list watch activity");
+    const rows = data ?? [];
+    const hasMore = rows.length > page.limit;
+    return {
+      items: rows.slice(0, page.limit).map(mapWatchActivity),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(offset + page.limit, filterKey) : null,
+    };
+  }
+
+  async searchCompanies(userId: string, text: string, limit: number): Promise<CompanyOption[]> {
+    const clean = sanitizeSearchText(text);
+    if (!clean) return [];
+    const { data, error } = await this.client
+      .from("companies")
+      .select("id, name")
+      .eq("user_id", userId)
+      .ilike("name", `%${clean}%`)
+      .order("name", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(limit);
+    if (error) throw mapDatabaseError(error, "search companies");
+    const companies = data ?? [];
+    if (!companies.length) return [];
+    const { data: watches, error: watchError } = await this.client
+      .from("company_watches")
+      .select("id, company_id, active")
+      .eq("user_id", userId)
+      .in(
+        "company_id",
+        companies.map((c) => c.id),
+      );
+    if (watchError) throw mapDatabaseError(watchError, "search companies");
+    const byCompany = new Map((watches ?? []).map((w) => [w.company_id, w]));
+    return companies.map((c) => {
+      const watch = byCompany.get(c.id);
+      return {
+        companyId: c.id,
+        name: c.name,
+        watchId: watch?.id ?? null,
+        watchActive: watch ? watch.active : null,
+      };
+    });
+  }
+
+  private async mutateWatch(
+    fn:
+      | "create_company_watch"
+      | "update_company_watch"
+      | "set_company_watch_active"
+      | "delete_company_watch",
+    ctx: MutationContext,
+    requestId: string,
+    command: Record<string, unknown>,
+  ): Promise<WatchMutationResult> {
+    const { data, error } = await this.client.rpc(fn, {
+      p_owner_id: ctx.actor.userId,
+      p_actor: ctx.actor.actorType,
+      p_request_id: requestId,
+      p_command: stripUndefined(command) as Json,
+    });
+    if (error) throw mapDatabaseError(error, fn, true);
+    return asWatchResult(data, fn);
+  }
+
+  createWatch(
+    ctx: MutationContext,
+    command: AddWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const { requestId, ...rest } = command;
+    return this.mutateWatch("create_company_watch", ctx, requestId, rest);
+  }
+
+  updateWatch(
+    ctx: MutationContext,
+    command: UpdateWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const { requestId, ...rest } = command;
+    return this.mutateWatch("update_company_watch", ctx, requestId, rest);
+  }
+
+  deleteWatch(
+    ctx: MutationContext,
+    command: DeleteWatchedCompanyCommand,
+  ): Promise<WatchMutationResult> {
+    const { requestId, ...rest } = command;
+    return this.mutateWatch("delete_company_watch", ctx, requestId, rest);
+  }
+
+  setWatchActive(
+    ctx: MutationContext,
+    command: SetCompanyWatchStatusCommand,
+  ): Promise<WatchMutationResult> {
+    const { requestId, ...rest } = command;
+    return this.mutateWatch("set_company_watch_active", ctx, requestId, rest);
+  }
+
+  // ------------------------------------------------------- board discovery
+  async getCompany(userId: string, companyId: string): Promise<CompanyRef | null> {
+    const { data, error } = await this.client
+      .from("companies")
+      .select("id, name, website_url")
+      .eq("user_id", userId)
+      .eq("id", companyId)
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "get company");
+    return data ? { companyId: data.id, name: data.name, websiteUrl: data.website_url } : null;
+  }
+
+  async findCompanyByName(userId: string, name: string): Promise<CompanyRef | null> {
+    const { data, error } = await this.client
+      .from("companies")
+      .select("id, name, website_url")
+      .eq("user_id", userId)
+      .eq("normalized_name", normalizeName(name))
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "find company");
+    return data ? { companyId: data.id, name: data.name, websiteUrl: data.website_url } : null;
+  }
+
+  async listCompanyJobUrls(userId: string, companyId: string): Promise<string[]> {
+    const { data, error } = await this.client
+      .from("jobs")
+      .select("job_url")
+      .eq("user_id", userId)
+      .eq("company_id", companyId)
+      .not("job_url", "is", null)
+      .limit(500);
+    if (error) throw mapDatabaseError(error, "company job urls");
+    return (data ?? []).map((row) => row.job_url!).filter(Boolean);
+  }
+
+  async listApplicationJobUrls(
+    userId: string,
+  ): Promise<Array<{ companyId: string; company: string; jobUrl: string }>> {
+    const out: Array<{ companyId: string; company: string; jobUrl: string }> = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await this.client
+        .from("application_overview")
+        .select("application_id, company_id, company_name, job_url")
+        .eq("user_id", userId)
+        .not("job_url", "is", null)
+        .order("application_id")
+        .range(offset, offset + 499);
+      if (error) throw mapDatabaseError(error, "application job urls");
+      out.push(
+        ...(data ?? []).map((row) => ({
+          companyId: row.company_id!,
+          company: row.company_name!,
+          jobUrl: row.job_url!,
+        })),
+      );
+      if (!data || data.length < 500) return out;
+    }
+  }
+
+  async listWatchSummaries(userId: string): Promise<WatchSummary[]> {
+    const out: WatchSummary[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await this.client
+        .from("company_watch_overview")
+        .select("watch_id, company_id, company_name, boards")
+        .eq("user_id", userId)
+        .order("watch_id")
+        .range(offset, offset + 499);
+      if (error) throw mapDatabaseError(error, "watch summaries");
+      out.push(
+        ...(data ?? []).map((row) => ({
+          watchId: row.watch_id!,
+          companyId: row.company_id!,
+          company: row.company_name!,
+          boards: (Array.isArray(row.boards) ? row.boards : []) as unknown as WatchBoard[],
+        })),
+      );
+      if (!data || data.length < 500) return out;
+    }
   }
 }

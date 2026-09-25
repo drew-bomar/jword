@@ -30,7 +30,13 @@ export default defineConfig({
     { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    env: { JWORD_E2E: "1", JWORD_OWNER_USER_ID: "", JWORD_EXTENSION_ID: EXTENSION_ID },
+    env: {
+      JWORD_E2E: "1",
+      JWORD_OWNER_USER_ID: "",
+      JWORD_EXTENSION_ID: EXTENSION_ID,
+      // Board discovery answers from fixtures; browser tests never call the real job boards.
+      JWORD_BOARD_DIRECTORY: "fixtures",
+    },
     command: process.env.CI
       ? `pnpm exec next build && pnpm exec next start -p ${PORT}`
       : `pnpm exec next dev -p ${PORT}`,

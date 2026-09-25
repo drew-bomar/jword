@@ -1,7 +1,45 @@
 import { describe, expect, it } from "vitest";
 import { createMutationAttempt } from "./attempt";
+import { mapDatabaseError } from "@jword/core";
 
 describe("unconfirmed saves", () => {
+  it("leaves a first missing-function rejection dismissible and uses a fresh request afterward", async () => {
+    const attempt = createMutationAttempt();
+    let rejectedId: unknown;
+    const missing = mapDatabaseError({ code: "PGRST202" }, "delete_company_watch", true);
+    await attempt.run({ watchId: "first" }, async (command) => {
+      rejectedId = command.requestId;
+      return { ok: false, error: missing.toJSON() };
+    });
+    expect(attempt.unresolved).toBe(false);
+    await attempt.run({ watchId: "second" }, async (command) => {
+      expect(command.requestId).not.toBe(rejectedId);
+      expect(command.watchId).toBe("second");
+      return { ok: true, data: null };
+    });
+  });
+
+  it("retains an earlier unknown attempt if the function becomes unavailable during retry", async () => {
+    const attempt = createMutationAttempt();
+    const calls: Record<string, unknown>[] = [];
+    await attempt.run({ watchId: "original" }, async (command) => {
+      calls.push(command);
+      throw new Error("response lost");
+    });
+    const missing = mapDatabaseError({ code: "PGRST202" }, "delete_company_watch", true);
+    await attempt.run({ watchId: "changed" }, async (command) => {
+      calls.push(command);
+      return { ok: false, error: missing.toJSON() };
+    });
+    expect(attempt.unresolved).toBe(true);
+    await attempt.run({ watchId: "changed again" }, async (command) => {
+      calls.push(command);
+      return { ok: true, data: null };
+    });
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[2]).toEqual(calls[0]);
+    expect(attempt.unresolved).toBe(false);
+  });
   it("retries the exact committed command after a lost response, despite changed view/input", async () => {
     const attempt = createMutationAttempt();
     const receipts = new Map<string, unknown>();

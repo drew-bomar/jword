@@ -35,6 +35,96 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
 12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
     signed-in user to `/forbidden` with a sign-out button.
 
+## Workday boards (decision 022)
+
+Needs migrations `20260924000200` and `20260924000300` on the database the app uses. Board
+checks call the real Workday endpoint from your dev server.
+
+1. **Paste a posting link.** Add company → "NVIDIA" → paste
+   `https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/…` (any NVIDIA
+   posting) → Add → a Workday `nvidia/wd5/NVIDIAExternalCareerSite` row appears, ticked, with
+   "2000+ open jobs", sample titles, and "Checked from your link". No Workday board appears
+   before you paste (it is never guessed).
+2. **Other URL family.** Paste `https://wd5.myworkdaysite.com/en-US/recruiting/nvidia/NVIDIAExternalCareerSite`
+   → it becomes the same board ("already selected" if the first is still selected).
+3. **Missing board.** Paste `https://nvidia.wd5.myworkdayjobs.com/NoSuchSite` → the row says
+   "Unlikely match" and "The board no longer exists". Untick it before saving.
+4. **Save.** Add to watchlist → the row lists "Workday nvidia/wd5/NVIDIAExternalCareerSite" and
+   "Started watching NVIDIA (Workday …)". Adding the same board to another company is refused.
+5. **From applications.** A company whose saved application links to a Workday posting shows
+   that board as a Strong match when you add it, and under Suggest from applications.
+6. **Agent.** Ask Claude Code/Codex to watch a company and give it a Workday link → it calls
+   `discover_company_boards` with `boardUrls`, then adds the board after confirming.
+
+## Company watchlist (decisions 018, 019)
+
+Board lookups call the real Greenhouse, Lever, and Ashby APIs from your dev server.
+
+1. **Open.** Click Watchlist in the header → the empty state offers Add company and Suggest from
+   applications.
+2. **Add by name.** Add company → type "Stripe" and pause → within a few seconds "Found N boards"
+   lists Greenhouse `stripe` as a Strong match with its open-job count and sample titles, ticked.
+   Add to watchlist → the row lists the board(s), Active, and "Started watching Stripe (…)".
+3. **Weak matches.** Add a company whose name is common (for example "Notion"). Strong matches are
+   ticked; Possible/Unlikely ones are shown but unticked with the reason (for example a different
+   board name). Tick only what is right.
+4. **Nothing found.** Add a company with no Greenhouse, Lever, or Ashby board → "No public
+   Greenhouse, Lever, or Ashby board found" with the names tried and "Workday boards are not
+   guessed". Paste a non-board careers URL under Add a board by URL → it is kept as a careers page
+   and nothing is fetched. Saving with no board also works.
+5. **Three at most.** With three boards selected, adding a fourth by URL says "at most 3" and the
+   remaining checkboxes are disabled.
+6. **Suggest from applications.** Click Suggest from applications → companies you applied to via
+   Greenhouse/Lever/Ashby links are listed with their boards → Watch N companies → they appear in
+   the table.
+7. **Edit.** Edit a company → remove a board, click Find boards, tick another, change interest →
+   Save → the row updates and says "Updated watch for …".
+8. **Stale edit.** Open /watchlist in two tabs. In tab B open Edit and type a website. In tab A
+   click Deactivate. Save in tab B → "This watch changed since you opened it"; the draft stays.
+   Refresh latest values → Reapply my edits → Save.
+9. **Deactivate/reactivate/duplicate.** Deactivate shows Inactive (icon + word); applications are
+   unchanged. Adding the same company again shows its boards as "Already watched for …" and
+   saving offers Reactivate it; no second row appears.
+10. **Phone width.** Rows become cards; the add dialog and header fit without sideways scrolling.
+11. **MCP.** Rebuild (`pnpm mcp:build`), restart the agent, and say "Watch Figma" → the agent calls
+    `discover_company_boards`, adds high-confidence boards with `add_watched_company`, and asks
+    about weaker ones. The web row shows "· Coding agent".
+
+## Watchlist review regression checks (decision 020)
+
+Use the latest migration (`pnpm exec supabase migration up --local` for the test stack;
+`pnpm exec supabase db push` when ready to apply it to the hosted tracker).
+
+1. Add company → type Stripe → wait for selected boards → change to Ramp. Stripe's boards must
+   disappear immediately, and only Ramp's boards should be saved. Repeat while lookup is running.
+   For a company already in the tracker, untick a suggestion before choosing its existing-company
+   search result; the suggestion must stay unticked after the next lookup.
+2. Start a board lookup, then save without waiting. Save should complete independently. An aborted
+   lookup must not populate another company or an already-closed form.
+3. Deactivate a watch, add that company again, and choose Reactivate it. Interrupt its response
+   after the request reaches the server. Only Retry reactivation should be usable; Add and Cancel
+   remain disabled until retry confirms the result. There should be only one activation event.
+4. Temporarily go offline for Find boards or Suggest from applications. Both should show a useful
+   error and permit retry after reconnection. Partial provider errors must not claim a complete
+   search; unknown ownership must prevent automatic board selection.
+5. Edit and save an application, then reopen Edit details without reloading the page.
+6. Set `JWORD_BOARD_DIRECTORY=fixtures` without local test configuration and start the app. Startup
+   must reject it. Clear the variable afterward for real provider lookups.
+
+## Delete a watch (decision 021)
+
+Apply `20260924000100_delete_company_watch.sql` to the environment being tested first.
+
+1. On Watchlist, choose Delete beside a test company. The dialog must name that company and
+   explain that applications, company notes, and history are kept. Choose Cancel; the watch stays.
+2. Open Delete again and choose Delete from watchlist. The company disappears, including after
+   refresh and when showing inactive watches. If it had applications, confirm those still open.
+3. Add the same company again. It should create a new watch without an Already watched warning.
+   Select its boards again. Repeat deletion with an inactive watch and on a narrow/mobile viewport.
+
+Automated tests cover lost-response retry, stale versions, ownership, and audit-write rollback.
+There is no need to interrupt a real deletion manually.
+
 ## Browser extension capture
 
 Build and load it first (`pnpm ext:build`, then Load unpacked `packages/extension/dist`; see
@@ -81,3 +171,31 @@ Follow `docs/MCP_SETUP.md` to register the server, then in the agent:
 - Interrupt a save response after commit. Retry the original save; there must be only one application/note/import and one corresponding activity. Inputs stay locked until the result is confirmed.
 - Browse beyond 200 applications and 50 notes/activity entries using More/First links. Changing a table filter returns to its first page.
 - Direct RPC calls with an unknown field, non-HTTP URL, invalid date, oversized value, or wrong JSON type must fail without any rows or receipts being added. Automated checks cover this locally.
+
+## Workday review fixes and extension watch capture (decision 023)
+
+1. Run `pnpm ext:build`, reload jword in `chrome://extensions`, and refresh the board tab.
+   Start the updated jword server and sign in normally. The two Workday migrations from
+   decision 022 must already be applied to the database this server uses.
+2. Open a Workday board or posting, click the jword toolbar icon, then **Watch this company**.
+   Confirm/correct the company, choose an existing company if appropriate, and **Add to
+   watchlist**. Check that the watch has one Workday board and no application was created.
+   Repeat with a `wd5.myworkdaysite.com/recruiting/account/site` URL: the company guess should
+   be the account, never “Wd5”.
+3. Reopen capture for that company. It should show that the company or board is already watched
+   and link to the watchlist, without replacing existing boards or reactivating the watch.
+4. In Add company, enter a company name and put its direct Workday board link into Website.
+   Discovery should offer that board without pasting it into the board picker.
+5. If you have a pre-Workday watch whose board is saved as Other, edit it and select **Use
+   Workday board** beside the selected link. The selected count should stay the same; save and
+   reopen to check the provider. This also works when three boards are already selected.
+6. Paste a known board in the picker. Its check should report only that board. Use **Find
+   boards/Search again** when you want a broader company search. The browser's network panel
+   should show `mode=verify` on the pasted-board lookup.
+7. For a missing/unreachable board, extension capture must label the uncertainty and require
+   the unverified-save checkbox. If a save response is lost, **Retry watch save** must retain
+   the command; close and mode-switch buttons stay disabled until confirmed.
+
+Automated browser tests cover the extension save/retry path and endpoint access checks, but
+could not run in the review sandbox because binding the Playwright server to port 3100 was
+refused (`EPERM`). Real Workday availability and the Chrome toolbar flow need manual verification.
