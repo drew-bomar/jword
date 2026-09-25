@@ -2,6 +2,107 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Confirmed watch deletion (2026-09-24)
+
+Manual-test follow-up: the running app's `.env.local` uses hosted Supabase, while `.env.test.local`
+uses the local stack. The repeated unconfirmed-delete report may be the missing hosted migration;
+the hosted schema could not be inspected here (DNS lookup failed, and the CLI dry run hit a
+telemetry filesystem sandbox denial). Hosted migration state still needs verification.
+
+The error mapper previously treated a missing RPC function as an unknown mutation outcome.
+It now returns `INTERNAL_ERROR / DATABASE_FUNCTION_UNAVAILABLE` with a database-update message.
+PostgREST's [PGRST202 definition](https://docs.postgrest.org/en/stable/references/errors.html#group-2-schema-cache)
+identifies a missing/stale function signature before execution. A first attempt rejected this way
+remains dismissible; a retry after an earlier unknown outcome still retains its original request,
+since the latest rejection cannot prove what happened earlier. Runtime: database API error →
+`packages/core/src/repositories/errors.ts` → Server Action result →
+`src/lib/mutations/attempt.ts` → dialog lock state. `pnpm check` passed with 257 unit tests,
+including first-rejection recovery and preserved retries after lost responses. No hosted changes
+were made. After applying pending hosted migrations, retry the original deletion to verify.
+
+The owner confirmed the previous review fixes through manual testing, then requested full removal
+from the watchlist. [Decision 021](decisions/021-watch-deletion.md) adds Delete to desktop rows and
+mobile cards, with a confirmation naming the company. Cancel leaves it alone. Confirming deletes
+its watch/board configuration while preserving the company, notes, applications, and audit history.
+Deactivate still pauses monitoring. Re-adding creates a new watch ID; companies with applications
+may appear in Suggest from applications again.
+
+Runtime: DeleteWatchDialog → deleteWatchAction (session) → deleteWatchedCompany (shared validation)
+→ Supabase repository → delete_company_watch (ownership, version, audit, deletion, receipt in one
+transaction). MCP's delete_watched_company enters the same service and requires confirmed=true.
+Lost responses retain the exact original retry; stale versions require a fresh confirmation.
+
+Files worth understanding:
+
+- `src/features/watchlist/delete-watch-dialog.tsx`: confirmation, cancel, and unresolved retries.
+- `packages/core/src/services/watchlist.ts`: the shared delete service and boundary validation.
+- `supabase/migrations/20260924000100_delete_company_watch.sql`: atomic deletion and audit retention.
+
+Tradeoff: the live watch is deleted, while audit rows keep their historical original_watch_id
+and clear the live foreign key. This preserves history and releases board/company uniqueness
+without adding hidden watches to every read. There is no restore action; re-add chooses boards anew.
+
+The new migration was applied locally only. Apply pending migrations and deploy matching code
+before testing hosted. Follow **Delete a watch** in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md).
+
+Verification: `pnpm check` passed (formatting, lint, all TypeScript projects, 254 unit tests),
+`pnpm test:integration` passed all 49 tests, and the web production/MCP builds passed.
+Desktop/mobile browser tests were added, but Playwright could not start its server because this
+environment rejects binding port 3100 (`EPERM`); owner manual verification is still needed.
+Database type generation also hit a sandbox denial writing Supabase CLI telemetry outside the
+workspace, so the small type changes were synchronized to the migration manually and typechecked.
+Regenerate with `pnpm db:types` in the normal local environment when convenient.
+
+## Watchlist review fixes (JWO-16 follow-up, 2026-09-23)
+
+[Decision 020](decisions/020-watchlist-reliability.md) records the owner-approved review fixes.
+Changing company clears its old board selection; cancelled lookups cannot add old results.
+Selecting an existing company with the same name preserves explicitly unticked boards.
+Reactivation means making an existing inactive watch active again. If its response is lost,
+the dialog retains that exact command for retry instead of permitting a conflicting Add.
+The tracker Edit details dialog also reopens after saving.
+
+Discovery uses cancellable authenticated GET requests so slow providers do not queue ahead of
+Save. It has total request/time limits, shared bounded public-evidence caching, validated provider
+responses, an Ashby documented-API fallback, explicit partial-result warnings, and a local-only
+test-fixture guard. Failed optional database reads can reduce evidence; authorization failures
+still stop the request. Unknown board ownership disables automatic selection.
+
+The database now preserves retained board IDs during replacement/reorder, rejects duplicate
+canonical URLs consistently, reports concurrent board claims correctly, and uses the same
+company-before-watch lock order for create and update to avoid deadlocks. Saves still write the
+change, audit record, version, and retry receipt atomically.
+
+Runtime: browser reads → authenticated `/api/watchlist/*` GET → shared service → owner-scoped
+repository + public directory. Browser mutations → Server Action → shared service → Postgres
+transaction. MCP calls those same services.
+
+Five files worth understanding:
+
+- `src/features/watchlist/watch-form.tsx`: company selection and unresolved-save retries.
+- `packages/core/src/services/watchlist.ts`: evidence, partial failures, and discovery limits.
+- `packages/core/src/discovery/cache.ts`: shared public probes and independent cancellation.
+- `packages/core/src/discovery/directory.ts`: provider response validation and Ashby fallback.
+- `supabase/migrations/20260923000200_watchlist_review.sql`: board reconciliation and locking.
+
+Tradeoff: cached public details can be five minutes old. Ownership is read fresh and checked
+again inside each save. The cache bounds work per process; it is not a distributed rate limiter.
+Removed boards are still deleted configuration; future job collection must decide how to retain
+source history. A future company editor must also revisit the shared watch/company version.
+
+Verification: formatting, lint, all TypeScript checks, 252 unit tests, 45 integration tests,
+the web production build, and the MCP build passed. New browser regression tests were added,
+but could not run here: the environment rejected binding the Playwright server to port 3100
+with `EPERM`. Live provider behavior and hosted deployment were not tested.
+
+Migration `20260923000200_watchlist_review.sql` was applied locally only. Before testing hosted,
+apply pending migrations with `pnpm exec supabase db push` and deploy the matching code.
+The next owner task is the **Watchlist review regression checks** section in
+[MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md): switch companies and preserve unticked choices;
+save during a slow lookup and retry failed reads; deactivate/reactivate including a lost response;
+save and reopen Edit details. Run `pnpm test:e2e` in an environment that can start
+the local web server before closing this follow-up.
+
 ## Board discovery (JWO-16 follow-up, 2026-09-23)
 
 [Decision 019](decisions/019-board-discovery.md). Branch `claude/board-discovery`, stacked on

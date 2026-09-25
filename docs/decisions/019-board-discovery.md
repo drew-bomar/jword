@@ -5,6 +5,10 @@ allowed but probably 3 is the max, go straight to building"). Amends
 [decision 018](018-company-watchlist.md): one watch per company stays, but boards move to a child
 table and are found for the owner instead of typed in.
 
+**Amended by [decision 020](020-watchlist-reliability.md):** cancellable GET reads, total probe and
+time budgets, partial-result reporting, public-evidence caching, guarded fixtures, validated Ashby
+fallback, and stable IDs for retained boards. The initial implementation details below are historical.
+
 ## Context
 
 With decision 018 the owner had to find each company's job-board URL by hand. The owner wants

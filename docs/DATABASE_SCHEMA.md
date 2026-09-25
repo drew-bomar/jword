@@ -250,7 +250,7 @@ Which companies' public job boards jword should monitor later. Configuration onl
 | `id`               | uuid         | primary key                                                                                    |
 | `user_id`          | uuid         | owner                                                                                          |
 | `company_id`       | uuid         | required; composite FK `(user_id, company_id)` to companies `(user_id, id)` on delete restrict |
-| `active`           | boolean      | default true; "remove from watchlist" sets false                                               |
+| `active`           | boolean      | default true; Deactivate sets false                                                            |
 | `provider`         | ats_provider | required                                                                                       |
 | `board_identifier` | text         | Greenhouse token / Lever slug / Ashby name; required for supported providers, null for OTHER   |
 | `board_url`        | text         | derived canonical board URL for supported providers; optional careers page for OTHER           |
@@ -283,13 +283,29 @@ select; writes only inside `create_company_watch` / `update_company_watch`, whic
 set and record before/after lists in the audit metadata. `company_watch_overview` exposes
 `boards` (JSON array in position order) and `board_providers`.
 
+Migration `20260923000200_watchlist_review.sql` ([decision 020](decisions/020-watchlist-reliability.md))
+preserves IDs and `created_at` for retained boards, including reorders. The position uniqueness
+constraint is deferrable during reconciliation and is checked before returning. Removed boards
+remain deleted configuration. Create/update lock company before watch and translate concurrent
+board claims into `BOARD_ALREADY_WATCHED`; duplicate canonical URLs are rejected before writing.
+
 ### `company_watch_activities` (decision 018)
 
-Append-only audit for watch mutations, the watchlist's counterpart of `application_activities`.
-Columns: `id`, `user_id`, `watch_id` (composite FK `(user_id, watch_id)` to company_watches, on
-delete cascade like application activities), `type watch_event_type`, `actor_type`, `summary`,
-`metadata jsonb` (changed field names; before/after for scalar fields; never company-notes text),
-`occurred_at`, `created_at`. Index `(user_id, watch_id, occurred_at desc)`.
+Audit for watch mutations, the watchlist's counterpart of `application_activities`.
+Columns: `id`, `user_id`, `original_watch_id` (immutable historical identity), `watch_id`
+(nullable live reference, composite FK `(user_id, watch_id)` to company_watches),
+`type watch_event_type` (including WATCH_DELETED), `actor_type`, `summary`, `metadata jsonb`
+(changed field names; before/after scalar fields; never company-notes text), `occurred_at`,
+`created_at`. Indexes `(user_id, watch_id, occurred_at desc)` and
+`(user_id, original_watch_id, occurred_at desc)`.
+
+Decision 021 (`20260924000100_delete_company_watch.sql`) replaces cascading audit deletion with
+`ON DELETE SET NULL (watch_id)`. New activities start with a live watch: a before-insert trigger
+copies its ID to `original_watch_id`, and the composite FK checks ownership. The historical ID
+and owner survive deletion; existing event payloads stay unchanged. `delete_company_watch`
+requires explicit confirmation and the current version, records the deleted board set in audit
+metadata, deletes the watch/boards, and commits a replayable receipt atomically. Company and
+application rows stay intact. Re-adding creates a new watch, with separate history.
 
 ### `company_watch_overview` view
 

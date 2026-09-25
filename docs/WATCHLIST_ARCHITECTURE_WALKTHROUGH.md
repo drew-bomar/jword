@@ -10,6 +10,11 @@ Read top to bottom. Open the linked files when a section points at them.
 > read section 10, which covers discovery and the board table. Budget 15 of the 90 minutes for it
 > by skimming section 5.
 
+> **Reliability follow-up:** [decision 020](decisions/020-watchlist-reliability.md) supersedes the
+> discovery transport below: browser reads use authenticated GET requests, with cancellation,
+> bounded public-evidence caching, total budgets, and explicit partial results. Saves still use
+> Server Actions. Retained board rows keep their IDs rather than being deleted and recreated.
+
 Terms used below:
 
 - **ATS**: applicant tracking system. Greenhouse, Lever, and Ashby host companies' public job

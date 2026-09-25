@@ -249,6 +249,9 @@ watchlist services as the web page. None fetches or stores job postings; only
   Ranked suggestions (`provider`, `boardIdentifier`, `boardUrl`, `confidence` high/medium/low,
   `reasons`, `openJobs`, `sampleTitles`, `fromApplications`, `watchedBy`) plus the names tried and
   any unreachable providers. Saves nothing ([decision 019](decisions/019-board-discovery.md)).
+  Decision 020 adds `incomplete`, `warnings`, and `ownershipChecked`. When ownership is unknown,
+  `watchedBy=null` does not mean free; ask before adding. Missing results from incomplete searches
+  are unverified, not proof that the provider has no board.
 - `suggest_watches_from_applications` (read-only, local): unwatched companies you applied to with
   boards parsed from saved job URLs.
 - `add_watched_company`: `{ requestId, company? | companyId?, boards?: Array<{ provider, boardIdentifier? | boardUrl? (OTHER) }> (max 3), interestLevel?, websiteUrl?, companyNotes? }`.
@@ -257,8 +260,13 @@ watchlist services as the web page. None fetches or stores job postings; only
   company is `CONFLICT` / `BOARD_ALREADY_WATCHED`.
 - `update_watched_company`: `{ requestId, watchId, expectedVersion, boards?, interestLevel?, websiteUrl?, companyNotes? }`.
   At least one field; `boards` replaces the whole set; identical values are a no-op.
-- `set_company_watch_status`: `{ requestId, watchId, expectedVersion, active }`. Deactivation
-  is the only "remove"; nothing is deleted.
+- `set_company_watch_status`: `{ requestId, watchId, expectedVersion, active }`. Pauses or resumes
+  monitoring while preserving configuration.
+- `delete_watched_company` (decision 021): `{ requestId, watchId, expectedVersion, confirmed: true }`.
+  Read one explicit watch and obtain the user's confirmation first. Deletes the watch and boards,
+  retaining the company, applications, notes, and audit history. Returns `deleted: true`; `version`
+  is the final revision, not an editable record. Re-adding creates a new watch ID. Stale deletion
+  needs a fresh read and confirmation; retry a lost response with the identical command/request ID.
 
 Watch mutation results use the shape below with `watchId`, `companyId`, `company`, and `active`
 in place of `applicationId`. `before` / `after` hold only scalar fields; company-notes text is

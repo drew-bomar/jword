@@ -2,6 +2,8 @@
 
 Status: Accepted by the owner on 2026-09-20. Amended by [decision 017](017-extension-overlay-capture-api.md):
 five origin-restricted Route Handlers under `/api/extension/` serve the capture extension only.
+Decision [020](020-watchlist-reliability.md) also permits three authenticated, read-only watchlist
+GET handlers so cancellable discovery does not block the browser's mutation queue.
 
 ## Context
 

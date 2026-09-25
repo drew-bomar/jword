@@ -5,7 +5,11 @@ and implementing this record in one run). Narrows one item of the v1 exclusions;
 
 **Amended by [decision 019](019-board-discovery.md) (2026-09-23):** boards moved to
 `company_watch_boards` (up to three per watch) and are found by board discovery. The
-one-board columns described below were dropped. Everything else here still applies.
+one-board columns described below were dropped.
+
+**Amended by [decision 021](021-watch-deletion.md) (2026-09-24):** confirmed deletion now removes
+watch/board configuration while retaining companies, applications, and audit history. The
+deactivation-only removal rule below is historical; pausing monitoring still uses deactivation.
 
 ## Context
 

@@ -116,12 +116,18 @@ When updating jword through the `jword` MCP server:
    and act only on one watch by its `watchId`; the same `hasMore`, `version`, `requestId`, and
    `STALE_VERSION` rules apply. Before adding a company, call `discover_company_boards` and pass
    up to three boards: include `high` confidence boards, ask the user about `medium`/`low` ones,
-   and skip boards already watched for another company. `add_watched_company` with a company name
+   and skip boards already watched for another company. Ask before adding when discovery reports
+   `ownershipChecked: false`; a null `watchedBy` then means unknown ownership. `incomplete` and `warnings` indicate that missing results are unverified.
+   `add_watched_company` with a company name
    reuses only an exact match (ignoring case and spacing); if the name could mean a different
    existing company ("Acme" vs "Acme Inc."), ask. On `CONFLICT / ALREADY_WATCHED`, offer
    `set_company_watch_status` to reactivate; never add a second watch. On
    `CONFLICT / BOARD_ALREADY_WATCHED`, report which company already watches that board. "Remove
-   from watchlist" means `set_company_watch_status` with `active: false`; nothing is deleted.
+   from watchlist" now supports `delete_watched_company` (decision 021): read one explicit watch,
+   confirm that company's deletion with the user, and send `watchId`, `expectedVersion`, a new
+   `requestId`, and `confirmed: true`. It deletes the watch/boards and keeps companies, applications,
+   and history. Pause/deactivate still means `set_company_watch_status` with `active: false`.
+   On stale deletion, read again and obtain fresh confirmation; retry lost responses identically.
    `update_watched_company` with `boards` replaces the whole set. No tool fetches or stores job
    postings.
 

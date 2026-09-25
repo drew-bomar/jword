@@ -68,6 +68,41 @@ Board lookups call the real Greenhouse, Lever, and Ashby APIs from your dev serv
     `discover_company_boards`, adds high-confidence boards with `add_watched_company`, and asks
     about weaker ones. The web row shows "· Coding agent".
 
+## Watchlist review regression checks (decision 020)
+
+Use the latest migration (`pnpm exec supabase migration up --local` for the test stack;
+`pnpm exec supabase db push` when ready to apply it to the hosted tracker).
+
+1. Add company → type Stripe → wait for selected boards → change to Ramp. Stripe's boards must
+   disappear immediately, and only Ramp's boards should be saved. Repeat while lookup is running.
+   For a company already in the tracker, untick a suggestion before choosing its existing-company
+   search result; the suggestion must stay unticked after the next lookup.
+2. Start a board lookup, then save without waiting. Save should complete independently. An aborted
+   lookup must not populate another company or an already-closed form.
+3. Deactivate a watch, add that company again, and choose Reactivate it. Interrupt its response
+   after the request reaches the server. Only Retry reactivation should be usable; Add and Cancel
+   remain disabled until retry confirms the result. There should be only one activation event.
+4. Temporarily go offline for Find boards or Suggest from applications. Both should show a useful
+   error and permit retry after reconnection. Partial provider errors must not claim a complete
+   search; unknown ownership must prevent automatic board selection.
+5. Edit and save an application, then reopen Edit details without reloading the page.
+6. Set `JWORD_BOARD_DIRECTORY=fixtures` without local test configuration and start the app. Startup
+   must reject it. Clear the variable afterward for real provider lookups.
+
+## Delete a watch (decision 021)
+
+Apply `20260924000100_delete_company_watch.sql` to the environment being tested first.
+
+1. On Watchlist, choose Delete beside a test company. The dialog must name that company and
+   explain that applications, company notes, and history are kept. Choose Cancel; the watch stays.
+2. Open Delete again and choose Delete from watchlist. The company disappears, including after
+   refresh and when showing inactive watches. If it had applications, confirm those still open.
+3. Add the same company again. It should create a new watch without an Already watched warning.
+   Select its boards again. Repeat deletion with an inactive watch and on a narrow/mobile viewport.
+
+Automated tests cover lost-response retry, stale versions, ownership, and audit-write rollback.
+There is no need to interrupt a real deletion manually.
+
 ## Browser extension capture
 
 Build and load it first (`pnpm ext:build`, then Load unpacked `packages/extension/dist`; see

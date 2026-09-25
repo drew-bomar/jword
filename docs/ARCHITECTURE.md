@@ -373,7 +373,9 @@ flowchart LR
   careers URL. The UI pre-fills from a pasted URL with a pure function; the server validates
   the final values again.
 - Every write is atomic with a `company_watch_activities` row and a retry receipt. Updates and
-  status changes use `expectedVersion`. "Remove" means deactivate; there is no delete.
+  status changes use `expectedVersion`. Decision 021 adds confirmed deletion using that same
+  version and retry contract. Watch/board rows are deleted; company/application data and audit
+  history remain. Deactivate continues to pause monitoring.
 - Future seam: a per-provider `BoardAdapter.listPostings(board)` in core, called by a later
   "Verify board" action and by collection. Collection state lives in the collection ticket's
   own table.
@@ -401,3 +403,13 @@ flowchart LR
   sets `JWORD_BOARD_DIRECTORY=fixtures`.
 - `suggestWatchesFromApplications` (local only) powers "Suggest from applications".
 - Still no job collection, storage, or schedule; those are the next discovery steps.
+
+#### Reliability amendment (decision 020)
+
+Browser watchlist reads now use `/api/watchlist/{boards,companies,suggestions}` GET handlers with
+session/owner checks and `private, no-store` JSON responses. They call the same services as MCP.
+This keeps provider requests cancellable and out of Next.js's sequential mutation queue.
+Discovery caps all evidence sources together at 15 probes and 12 seconds of service work.
+Public evidence alone is cached for five minutes with bounded concurrency/storage; local ownership
+reads stay fresh. Partial failures and unknown board ownership are explicit in the result. See
+[decision 020](decisions/020-watchlist-reliability.md) for the complete contract and tradeoffs.
