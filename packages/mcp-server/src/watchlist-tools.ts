@@ -279,7 +279,9 @@ export function registerWatchlistTools(
         "Greenhouse, Lever, and Ashby's public APIs whether boards exist under names built from the company " +
         "name and website. Returns ranked suggestions with confidence (high/medium/low), reasons, open-job " +
         "counts, sample titles, and whether a board is already watched. Saves nothing. Same-name boards can " +
-        "belong to other companies: add high-confidence boards, and ask the user about the rest.",
+        "belong to other companies: add high-confidence boards only when ownershipChecked=true; otherwise " +
+        "board ownership is unknown, so ask the user before adding. Ask about medium/low matches too. " +
+        "incomplete and warnings identify partial results; absence there does not prove a board is missing.",
       inputSchema: z.strictObject({
         company: z.string().min(1).max(200).optional().describe("Company name."),
         companyId: uuid
@@ -295,7 +297,7 @@ export function registerWatchlistTools(
         return json({
           ...result,
           note: result.unavailable.length
-            ? `Could not reach ${result.unavailable.join(", ")}; a missing board there is unknown, not absent.`
+            ? `Could not complete checks on ${result.unavailable.join(", ")}; a missing board there is unknown, not absent.`
             : undefined,
         });
       } catch (error) {

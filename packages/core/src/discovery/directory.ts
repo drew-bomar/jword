@@ -1,3 +1,4 @@
+import * as z from "zod";
 import { isValidBoardIdentifier, type SupportedBoardProvider } from "../watchlist/boards";
 import type { BoardDirectory, ProbeOutcome } from "./types";
 
@@ -6,7 +7,7 @@ type Fetch = typeof fetch;
 export interface PublicBoardDirectoryOptions {
   /** Injected so tests never touch the network. Defaults to the global fetch. */
   fetch?: Fetch;
-  /** Per-request timeout. */
+  /** Total timeout for one board, including optional detail or fallback requests. */
   timeoutMs?: number;
 }
 
@@ -14,6 +15,26 @@ const USER_AGENT = "jword/0.1 (personal job tracker; board lookup)";
 const SAMPLE_TITLES = 3;
 const JSON_LIMIT = 5_000_000;
 const HTML_LIMIT = 64_000;
+const title = z.string().trim().min(1).max(2000);
+const greenhouseBoard = z.object({ name: title });
+const greenhouseJobs = z.object({
+  jobs: z.array(z.object({ title })),
+  meta: z.object({ total: z.number().int().nonnegative() }).optional(),
+});
+const leverJobs = z.array(z.object({ text: title }));
+const ashbyOrganization = z.object({
+  organization: z
+    .object({ name: title, publicWebsite: z.string().nullable().optional() })
+    .nullable(),
+});
+const ashbyJobs = z.object({ jobBoard: z.object({ jobPostings: z.array(z.object({ title })) }) });
+const publicAshbyJobs = z.object({
+  jobs: z.array(z.object({ title, isListed: z.boolean().optional() })),
+});
+const graphqlResponse = z.object({
+  data: z.record(z.string(), z.unknown()),
+  errors: z.array(z.unknown()).optional(),
+});
 
 class HttpStatusError extends Error {
   constructor(readonly status: number) {
@@ -86,7 +107,8 @@ function decodeEntities(value: string): string {
  *   <title> (first 64 KB only) gives the company name.
  * - Ashby: the GraphQL endpoint behind jobs.ashbyhq.com (undocumented) gives the organization's
  *   name and website plus posting titles in a few KB, instead of the documented posting API's
- *   multi-megabyte descriptions. If it changes, Ashby lookups report "could not reach".
+ *   multi-megabyte descriptions. Contract failures fall back to the documented posting API within
+ *   the same byte/time limits, without claiming name or website evidence.
  */
 export function createPublicBoardDirectory(
   options: PublicBoardDirectoryOptions = {},
@@ -94,39 +116,48 @@ export function createPublicBoardDirectory(
   const doFetch: Fetch = options.fetch ?? ((...args) => fetch(...args));
   const timeoutMs = options.timeoutMs ?? 6000;
 
-  async function request(url: string, init: RequestInit = {}, limit = JSON_LIMIT) {
+  async function request(
+    url: string,
+    signal: AbortSignal,
+    init: RequestInit = {},
+    limit = JSON_LIMIT,
+  ) {
     const response = await doFetch(url, {
       ...init,
-      redirect: "follow",
-      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "error",
+      signal,
+      cache: "no-store",
       headers: { "user-agent": USER_AGENT, accept: "application/json, text/html", ...init.headers },
     });
-    if (response.status === 404) return { missing: true as const };
-    if (!response.ok) throw new HttpStatusError(response.status);
+    if (!response.ok) {
+      await response.body?.cancel();
+      if (response.status === 404) return { missing: true as const };
+      throw new HttpStatusError(response.status);
+    }
     return { missing: false as const, ...(await readText(response, limit)) };
   }
 
-  async function json(url: string, init?: RequestInit): Promise<unknown | undefined> {
-    const result = await request(url, init);
+  async function json(
+    url: string,
+    signal: AbortSignal,
+    init?: RequestInit,
+  ): Promise<unknown | undefined> {
+    const result = await request(url, signal, init);
     if (result.missing) return undefined;
     if (result.cut) throw new Error("response too large");
     return JSON.parse(result.text) as unknown;
   }
 
-  async function greenhouse(id: string): Promise<ProbeOutcome> {
+  async function greenhouse(id: string, signal: AbortSignal): Promise<ProbeOutcome> {
     const base = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(id)}`;
-    const board = (await json(base)) as { name?: unknown } | undefined;
-    if (!board) return { status: "missing" };
+    const raw = await json(base, signal);
+    if (raw === undefined) return { status: "missing" };
+    const board = greenhouseBoard.parse(raw);
     let openJobs: number | null = null;
     let sampleTitles: string[] = [];
     try {
-      const jobs = (await json(`${base}/jobs`)) as { jobs?: unknown; meta?: { total?: unknown } };
-      openJobs =
-        typeof jobs?.meta?.total === "number"
-          ? jobs.meta.total
-          : Array.isArray(jobs?.jobs)
-            ? jobs.jobs.length
-            : null;
+      const jobs = greenhouseJobs.parse(await json(`${base}/jobs`, signal));
+      openJobs = jobs.meta?.total ?? jobs.jobs.length;
       sampleTitles = titlesFrom(jobs?.jobs);
     } catch {
       // The board exists; the job list is optional detail.
@@ -141,16 +172,22 @@ export function createPublicBoardDirectory(
     };
   }
 
-  async function lever(id: string): Promise<ProbeOutcome> {
+  async function lever(id: string, signal: AbortSignal): Promise<ProbeOutcome> {
     const pageSize = 5;
     const postings = await json(
       `https://api.lever.co/v0/postings/${encodeURIComponent(id)}?mode=json&limit=${pageSize}`,
+      signal,
     );
     if (postings === undefined) return { status: "missing" };
-    const list = Array.isArray(postings) ? postings : [];
+    const list = leverJobs.parse(postings);
     let boardName: string | null = null;
     try {
-      const page = await request(`https://jobs.lever.co/${encodeURIComponent(id)}`, {}, HTML_LIMIT);
+      const page = await request(
+        `https://jobs.lever.co/${encodeURIComponent(id)}`,
+        signal,
+        {},
+        HTML_LIMIT,
+      );
       const match = page.missing ? null : /<title>([^<]{1,200})<\/title>/i.exec(page.text);
       boardName = match ? decodeEntities(match[1]!) || null : null;
     } catch {
@@ -166,67 +203,96 @@ export function createPublicBoardDirectory(
     };
   }
 
-  async function ashbyQuery(operationName: string, query: string, id: string) {
-    const body = (await json(`https://jobs.ashbyhq.com/api/non-user-graphql?op=${operationName}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        operationName,
-        variables: { organizationHostedJobsPageName: id, searchContext: "JobBoard" },
-        query,
+  async function ashbyQuery(operationName: string, query: string, id: string, signal: AbortSignal) {
+    const body = graphqlResponse.parse(
+      await json(`https://jobs.ashbyhq.com/api/non-user-graphql?op=${operationName}`, signal, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operationName,
+          variables: { organizationHostedJobsPageName: id, searchContext: "JobBoard" },
+          query,
+        }),
       }),
-    })) as { data?: Record<string, unknown>; errors?: unknown } | undefined;
-    if (!body || body.errors || !body.data) throw new Error("unexpected Ashby response");
+    );
+    if (body.errors?.length) throw new Error("unexpected Ashby response");
     return body.data;
   }
 
-  async function ashby(id: string): Promise<ProbeOutcome> {
-    const org = (
-      await ashbyQuery(
-        "ApiOrganizationFromHostedJobsPageName",
-        "query ApiOrganizationFromHostedJobsPageName($organizationHostedJobsPageName: String!, $searchContext: OrganizationSearchContext) { organization: organizationFromHostedJobsPageName(organizationHostedJobsPageName: $organizationHostedJobsPageName, searchContext: $searchContext) { name publicWebsite } }",
-        id,
-      )
-    ).organization as { name?: unknown; publicWebsite?: unknown } | null;
-    if (!org) return { status: "missing" };
+  async function ashby(id: string, signal: AbortSignal): Promise<ProbeOutcome> {
+    let org: z.infer<typeof ashbyOrganization>["organization"];
+    try {
+      org = ashbyOrganization.parse(
+        await ashbyQuery(
+          "ApiOrganizationFromHostedJobsPageName",
+          "query ApiOrganizationFromHostedJobsPageName($organizationHostedJobsPageName: String!, $searchContext: OrganizationSearchContext) { organization: organizationFromHostedJobsPageName(organizationHostedJobsPageName: $organizationHostedJobsPageName, searchContext: $searchContext) { name publicWebsite } }",
+          id,
+          signal,
+        ),
+      ).organization;
+    } catch {
+      // The documented API is a fallback for an internal contract failure. It cannot prove a
+      // company-name or website match, so it must not invent that evidence for ranking.
+      signal.throwIfAborted();
+      const raw = await json(
+        `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(id)}`,
+        signal,
+      );
+      if (raw === undefined) return { status: "missing" };
+      const jobs = publicAshbyJobs.parse(raw).jobs.filter((job) => job.isListed !== false);
+      return {
+        status: "found",
+        boardName: null,
+        website: null,
+        openJobs: jobs.length,
+        openJobsAtLeast: false,
+        sampleTitles: titlesFrom(jobs),
+      };
+    }
+    if (org === null) return { status: "missing" };
     let openJobs: number | null = null;
     let sampleTitles: string[] = [];
     try {
-      const board = (
+      const board = ashbyJobs.parse(
         await ashbyQuery(
           "ApiJobBoardWithTeams",
           "query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) { jobBoard: jobBoardWithTeams(organizationHostedJobsPageName: $organizationHostedJobsPageName) { jobPostings { id title } } }",
           id,
-        )
-      ).jobBoard as { jobPostings?: unknown } | null;
-      if (board && Array.isArray(board.jobPostings)) {
-        openJobs = board.jobPostings.length;
-        sampleTitles = titlesFrom(board.jobPostings);
-      }
+          signal,
+        ),
+      ).jobBoard;
+      openJobs = board.jobPostings.length;
+      sampleTitles = titlesFrom(board.jobPostings);
     } catch {
-      // Postings are optional detail.
+      // Organization identity was verified; counts are optional, never guessed as zero.
     }
     return {
       status: "found",
-      boardName: typeof org.name === "string" && org.name.trim() ? org.name.trim() : null,
-      website: typeof org.publicWebsite === "string" ? org.publicWebsite : null,
+      boardName: org.name,
+      website: org.publicWebsite ?? null,
       openJobs,
       openJobsAtLeast: false,
       sampleTitles,
     };
   }
 
-  const probes: Record<SupportedBoardProvider, (id: string) => Promise<ProbeOutcome>> = {
+  const probes: Record<
+    SupportedBoardProvider,
+    (id: string, signal: AbortSignal) => Promise<ProbeOutcome>
+  > = {
     GREENHOUSE: greenhouse,
     LEVER: lever,
     ASHBY: ashby,
   };
 
   return {
-    async probe(provider, identifier) {
+    async probe(provider, identifier, callerSignal) {
       if (!isValidBoardIdentifier(identifier)) return { status: "missing" };
       try {
-        return await probes[provider](identifier);
+        const timeout = AbortSignal.timeout(timeoutMs);
+        const signal = callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
+        signal.throwIfAborted();
+        return await probes[provider](identifier, signal);
       } catch {
         return { status: "error" };
       }

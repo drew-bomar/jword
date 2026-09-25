@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { CheckIcon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { ApplicationWatchSuggestion } from "@jword/core/browser";
@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { createMutationAttempt } from "@/lib/mutations/attempt";
-import { addWatchAction, suggestFromApplicationsAction } from "@/server/actions/watchlist";
+import { addWatchAction } from "@/server/actions/watchlist";
+import { readWatchlist } from "./read";
 import { boardLabel } from "./board-picker";
 
 type ItemState =
@@ -38,12 +39,22 @@ export function SuggestFromApplicationsDialog() {
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [states, setStates] = useState<Record<string, ItemState>>({});
   const [pending, startTransition] = useTransition();
+  const loadingRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => loadingRequest.current?.abort(), []);
   const attempts = useRef(new Map<string, ReturnType<typeof createMutationAttempt>>());
 
   async function load() {
+    loadingRequest.current?.abort();
+    const controller = new AbortController();
+    loadingRequest.current = controller;
     setLoading(true);
     setLoadError(null);
-    const result = await suggestFromApplicationsAction();
+    const result = await readWatchlist<ApplicationWatchSuggestion[]>(
+      "suggestions",
+      {},
+      controller.signal,
+    );
+    if (controller.signal.aborted) return;
     setLoading(false);
     if (!result.ok) {
       setLoadError(result.error.message);
@@ -102,6 +113,7 @@ export function SuggestFromApplicationsDialog() {
       open={open}
       onOpenChange={(next) => {
         if (pending || anyUnconfirmed) return;
+        if (!next) loadingRequest.current?.abort();
         setOpen(next);
         if (next) void load();
       }}
@@ -128,6 +140,9 @@ export function SuggestFromApplicationsDialog() {
         ) : loadError ? (
           <Alert variant="destructive" role="alert">
             <AlertDescription>{loadError}</AlertDescription>
+            <Button type="button" variant="outline" onClick={() => void load()}>
+              Try again
+            </Button>
           </Alert>
         ) : suggestions && suggestions.length === 0 ? (
           <p className="text-muted-foreground text-sm">
@@ -153,7 +168,7 @@ export function SuggestFromApplicationsDialog() {
                         id={id}
                         className="mt-0.5"
                         checked={chosen.has(item.companyId)}
-                        disabled={pending}
+                        disabled={pending || (state.kind === "failed" && state.retryable)}
                         onCheckedChange={(v) =>
                           setChosen((set) => {
                             const next = new Set(set);

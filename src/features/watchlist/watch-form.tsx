@@ -25,11 +25,11 @@ import { useReliableMutation } from "@/lib/mutations/use-reliable-mutation";
 import type { ActionError } from "@/server/actions/result";
 import {
   addWatchAction,
-  searchCompaniesAction,
   setWatchStatusAction,
   updateWatchAction,
 } from "@/server/actions/watchlist";
 import { BoardPicker, boardLabel } from "./board-picker";
+import { readWatchlist } from "./read";
 
 interface WatchFormValues {
   company: string;
@@ -152,13 +152,17 @@ export function WatchForm({
   const lookup = mode.kind === "add" && !values.companyId ? values.company.trim() : "";
   useEffect(() => {
     if (!lookup) return;
-    let cancelled = false;
+    const controller = new AbortController();
     const handle = setTimeout(async () => {
-      const result = await searchCompaniesAction({ text: lookup });
-      if (!cancelled) setOptions(result.ok ? result.data : []);
+      const result = await readWatchlist<CompanyOption[]>(
+        "companies",
+        { text: lookup },
+        controller.signal,
+      );
+      if (!controller.signal.aborted) setOptions(result.ok ? result.data : []);
     }, 250);
     return () => {
-      cancelled = true;
+      controller.abort();
       clearTimeout(handle);
     };
   }, [lookup]);
@@ -169,7 +173,7 @@ export function WatchForm({
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (pending || ((stale || newer) && !unconfirmed)) return;
+    if (pending || reactivation.unconfirmed || ((stale || newer) && !unconfirmed)) return;
     setError(null);
     setAlreadyWatched(null);
     startTransition(async () => {
@@ -255,7 +259,14 @@ export function WatchForm({
         setWatchStatusAction,
       );
       if (!result.ok) {
-        setError(result.error);
+        if (result.error.reason === "STALE_VERSION") {
+          setAlreadyWatched(null);
+          setError({
+            ...result.error,
+            message:
+              "This watch changed. Choose Add to watchlist again to check its latest state before reactivating.",
+          });
+        } else setError(result.error);
         return;
       }
       toast.success(result.data.replayed ? "Earlier save confirmed." : result.data.summary);
@@ -341,7 +352,7 @@ export function WatchForm({
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       ) : null}
-      {unconfirmed ? (
+      {unconfirmed || reactivation.unconfirmed ? (
         <Alert role="status">
           <AlertDescription>
             The save result is unconfirmed. It may already have been saved. Retry the original save
@@ -379,7 +390,16 @@ export function WatchForm({
                 required
                 autoComplete="off"
                 value={values.company}
-                onChange={(e) => set("company", e.target.value)}
+                onChange={(e) => {
+                  const company = e.target.value;
+                  setOptions([]);
+                  setAlreadyWatched(null);
+                  setValues((v) => ({
+                    ...v,
+                    company,
+                    boards: normalizeName(v.company) === normalizeName(company) ? v.boards : [],
+                  }));
+                }}
                 aria-invalid={Boolean(fieldErrors?.company)}
                 aria-describedby="watch-company-hint"
               />
@@ -396,13 +416,18 @@ export function WatchForm({
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() =>
+                        onClick={() => {
+                          setAlreadyWatched(null);
                           setValues((v) => ({
                             ...v,
                             company: option.name,
                             companyId: option.companyId,
-                          }))
-                        }
+                            boards:
+                              normalizeName(v.company) === normalizeName(option.name)
+                                ? v.boards
+                                : [],
+                          }));
+                        }}
                       >
                         {option.name}
                         {option.watchId ? (
@@ -422,6 +447,7 @@ export function WatchForm({
 
         <div className="border-t pt-4">
           <BoardPicker
+            key={normalizeName(values.company)}
             company={values.company}
             companyId={values.companyId}
             websiteUrl={values.websiteUrl}
@@ -491,7 +517,10 @@ export function WatchForm({
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || ((stale || newer) && !unconfirmed)}>
+        <Button
+          type="submit"
+          disabled={pending || reactivation.unconfirmed || ((stale || newer) && !unconfirmed)}
+        >
           {pending
             ? "Saving…"
             : unconfirmed

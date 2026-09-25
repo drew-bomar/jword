@@ -6,6 +6,18 @@ const admin = () =>
     auth: { persistSession: false },
   });
 
+test("Edit details can reopen after a successful save", async ({ page }) => {
+  await createApplication(page, { company: "Reopen", title: "Engineer" });
+  const edit = page.getByRole("button", { name: "Edit details", exact: true });
+  await edit.click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Location").fill("Chicago");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await edit.click();
+  await expect(dialog.getByLabel("Location")).toHaveValue("Chicago");
+});
+
 test("stale details retain the draft across refresh and preserve another tab's change", async ({
   page,
 }) => {

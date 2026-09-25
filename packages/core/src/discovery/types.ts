@@ -21,7 +21,11 @@ export type ProbeOutcome =
 
 /** Reads public board APIs. The real one lives in ./directory; tests use a fake. */
 export interface BoardDirectory {
-  probe(provider: SupportedBoardProvider, identifier: string): Promise<ProbeOutcome>;
+  probe(
+    provider: SupportedBoardProvider,
+    identifier: string,
+    signal?: AbortSignal,
+  ): Promise<ProbeOutcome>;
 }
 
 /** A board jword found for a company, with the evidence for the owner to judge it. */
@@ -49,6 +53,11 @@ export interface BoardDiscoveryResult {
   suggestions: BoardSuggestion[];
   /** Providers that could not be reached, so a missing board there is unknown, not absent. */
   unavailable: SupportedBoardProvider[];
+  /** At least one candidate failed or was not checked, but the provider was not entirely down. */
+  incomplete: SupportedBoardProvider[];
+  /** False means watchedBy=null is unknown, not proof that a board is free. */
+  ownershipChecked: boolean;
+  warnings: string[];
 }
 
 /** A company you applied to, not yet watched, with boards read from its job URLs. */

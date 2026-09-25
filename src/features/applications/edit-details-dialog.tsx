@@ -47,10 +47,14 @@ export function EditDetailsDialog({ application }: { application: ApplicationDet
               kind: "edit",
               application,
               onSaved: () => {
+                setBusy(false);
                 setOpen(false);
                 router.refresh();
               },
-              onCancel: () => setOpen(false),
+              onCancel: () => {
+                setBusy(false);
+                setOpen(false);
+              },
             }}
           />
         ) : null}

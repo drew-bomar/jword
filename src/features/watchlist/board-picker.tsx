@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { discoverBoardsAction } from "@/server/actions/watchlist";
+import { readWatchlist } from "./read";
 
 const CONFIDENCE_LABELS: Record<BoardConfidence, string> = {
   high: "Strong match",
@@ -83,32 +83,42 @@ export function BoardPicker({
   const [manualUrl, setManualUrl] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
   const sequence = useRef(0);
+  const request = useRef<AbortController | null>(null);
   // Latest values for the async search callback, which outlives the render that started it.
   const selectedRef = useRef(selected);
   const touchedRef = useRef(touched);
+  const disabledRef = useRef(disabled);
   useEffect(() => {
     selectedRef.current = selected;
     touchedRef.current = touched;
+    disabledRef.current = disabled;
   });
 
   const name = company.trim();
   const website = /^https?:\/\/\S+$/i.test(websiteUrl.trim()) ? websiteUrl.trim() : undefined;
 
   async function search() {
-    if (name.length < 2 && !companyId) return;
+    if (disabledRef.current || (name.length < 2 && !companyId)) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     const run = ++sequence.current;
     setState({ kind: "searching", company: name });
-    const result = await discoverBoardsAction({
-      ...(companyId ? { companyId } : { company: name }),
-      ...(website ? { websiteUrl: website } : {}),
-    });
-    if (run !== sequence.current) return; // a newer search replaced this one
+    const result = await readWatchlist<BoardDiscoveryResult>(
+      "boards",
+      {
+        ...(companyId ? { companyId } : { company: name }),
+        ...(website ? { websiteUrl: website } : {}),
+      },
+      controller.signal,
+    );
+    if (controller.signal.aborted || run !== sequence.current) return;
     if (!result.ok) {
       setState({ kind: "failed", message: result.error.message });
       return;
     }
     setState({ kind: "done", result: result.data });
-    if (!touchedRef.current) {
+    if (!touchedRef.current && !disabledRef.current && result.data.ownershipChecked) {
       const keep = selectedRef.current;
       const strong = result.data.suggestions
         .filter((s) => s.confidence === "high" && !takenElsewhere(s))
@@ -124,11 +134,16 @@ export function BoardPicker({
 
   // Look up boards by themselves once typing pauses; the effect only talks to the server.
   useEffect(() => {
-    if (!autoSearch || (name.length < 2 && !companyId)) return;
-    const handle = setTimeout(() => void search(), 800);
-    return () => clearTimeout(handle);
+    const handle =
+      autoSearch && !disabled && (name.length >= 2 || companyId)
+        ? setTimeout(() => void search(), 800)
+        : undefined;
+    return () => {
+      clearTimeout(handle);
+      request.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSearch, name, companyId]);
+  }, [autoSearch, name, companyId, website]);
 
   const full = selected.length >= MAX_BOARDS_PER_WATCH;
   const isSelected = (b: WatchBoard) => selected.some((s) => boardKey(s) === boardKey(b));
@@ -209,8 +224,12 @@ export function BoardPicker({
               ? `Found ${suggestions.length} board${suggestions.length === 1 ? "" : "s"} for “${state.result.company}”.`
               : `No public Greenhouse, Lever, or Ashby board found for “${state.result.company}” (tried ${state.result.candidates.join(", ") || "no names"}). Add one by URL below, or save without a board.`}
             {state.result.unavailable.length
-              ? ` Could not reach ${state.result.unavailable.map((p) => ATS_PROVIDER_LABELS[p]).join(", ")}; try again later.`
+              ? ` Could not complete checks on ${state.result.unavailable.map((p) => ATS_PROVIDER_LABELS[p]).join(", ")}; try again later.`
               : ""}
+            {state.result.incomplete.length
+              ? ` Some checks on ${state.result.incomplete.map((p) => ATS_PROVIDER_LABELS[p]).join(", ")} did not finish; missing results are unverified.`
+              : ""}
+            {state.result.warnings.map((warning) => ` ${warning}`).join("")}
           </>
         ) : name.length < 2 && !companyId ? (
           "Enter the company to look up its boards."

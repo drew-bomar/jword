@@ -8,7 +8,7 @@ import {
   uuidSchema,
   versionSchema,
 } from "../validation/schemas";
-import { BOARD_IDENTIFIER_PATTERN } from "./boards";
+import { BOARD_IDENTIFIER_PATTERN, canonicalBoardUrl } from "./boards";
 
 export const WATCHLIST_DEFAULT_LIMIT = 10;
 export const WATCHLIST_MCP_MAX_LIMIT = 25;
@@ -106,12 +106,19 @@ export const boardsSchema = z
   .max(MAX_BOARDS_PER_WATCH, `A company can have at most ${MAX_BOARDS_PER_WATCH} boards.`)
   .superRefine((boards, ctx) => {
     const seen = new Set<string>();
+    const urls = new Set<string>();
     boards.forEach((board, index) => {
       const key = boardKey(board);
-      if (seen.has(key)) {
+      const url = (
+        board.provider === "OTHER"
+          ? (board.boardUrl ?? "")
+          : canonicalBoardUrl(board.provider, board.boardIdentifier ?? "")
+      ).toLowerCase();
+      if (seen.has(key) || urls.has(url)) {
         ctx.addIssue({ code: "custom", path: [index], message: "The same board is listed twice." });
       }
       seen.add(key);
+      urls.add(url);
     });
   });
 

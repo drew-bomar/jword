@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./helpers/auth";
+import { createApplication, expect, test } from "./helpers/auth";
 
 // Board discovery answers from E2E_FIXTURE_BOARDS (JWORD_BOARD_DIRECTORY=fixtures in the
 // Playwright web server), so these tests never call Greenhouse, Lever, or Ashby.
@@ -16,6 +16,178 @@ async function choose(page: Page, label: string, option: string) {
 
 test.describe("company watchlist", () => {
   test.skip(({ isMobile }) => Boolean(isMobile), "desktop flow; mobile covered below");
+
+  test("changing companies clears boards, including results from an older lookup", async ({
+    page,
+  }) => {
+    await createApplication(page, { company: "Stripe", title: "Engineer" });
+    await page.goto("/watchlist");
+    const dialog = await openAdd(page);
+    await dialog.getByLabel("Company *").fill("Stripe");
+    await expect(dialog.getByText("Selected (2/3)")).toBeVisible();
+    await dialog
+      .getByTestId("board-suggestion")
+      .filter({ hasText: "Lever" })
+      .getByRole("checkbox")
+      .uncheck();
+    const lookup = page.waitForResponse((response) =>
+      response.url().includes("/api/watchlist/boards?companyId="),
+    );
+    await dialog
+      .getByRole("list", { name: "Existing companies" })
+      .getByRole("button", { name: "Stripe", exact: true })
+      .click();
+    await lookup;
+    await expect(dialog.getByText("Selected (1/3)")).toBeVisible();
+    await expect(
+      dialog.getByTestId("board-suggestion").filter({ hasText: "Lever" }).getByRole("checkbox"),
+    ).not.toBeChecked();
+    await dialog.getByRole("button", { name: "Change", exact: true }).click();
+    await dialog.getByLabel("Company *").fill("Ramp");
+    await expect(dialog.getByText("Selected (0/3)")).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "Selected boards" })).toHaveText("Ashby ramp");
+    await dialog.getByRole("button", { name: "Add to watchlist" }).click();
+    const row = page.getByTestId("watch-row").filter({ hasText: "Ramp" });
+    await expect(row.getByRole("link", { name: "Open Ramp Ashby board" })).toBeVisible();
+    await expect(row).not.toContainText("stripe");
+  });
+
+  test("an in-flight lookup cannot populate a different company or block saving", async ({
+    page,
+  }) => {
+    await page.goto("/watchlist");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    await page.route("**/api/watchlist/boards?**", async (route) => {
+      started();
+      await gate;
+      await route
+        .fulfill({
+          json: {
+            ok: true,
+            data: {
+              company: "Stripe",
+              companyId: null,
+              candidates: ["stripe"],
+              ownershipChecked: true,
+              unavailable: [],
+              incomplete: [],
+              warnings: [],
+              suggestions: [
+                {
+                  provider: "GREENHOUSE",
+                  boardIdentifier: "stripe",
+                  boardUrl: "https://job-boards.greenhouse.io/stripe",
+                  confidence: "high",
+                  reasons: ["Name matches"],
+                  boardName: "Stripe",
+                  openJobs: 1,
+                  openJobsAtLeast: false,
+                  sampleTitles: [],
+                  fromApplications: false,
+                  watchedBy: null,
+                },
+              ],
+            },
+          },
+        })
+        .catch(() => {}); // The client may have already aborted this old read.
+    });
+    const dialog = await openAdd(page);
+    await dialog.getByLabel("Company *").fill("Stripe");
+    await requested;
+    await dialog.getByLabel("Company *").fill("Different Company");
+    await dialog.getByRole("button", { name: "Add to watchlist" }).click();
+    try {
+      await expect(dialog).toBeHidden({ timeout: 5_000 });
+      const row = page.getByTestId("watch-row").filter({ hasText: "Different Company" });
+      await expect(row).toContainText("No board yet");
+    } finally {
+      release();
+    }
+  });
+
+  test("transport failures leave lookup and suggestions retryable", async ({ page }) => {
+    await page.goto("/watchlist");
+    let failed = false;
+    await page.route("**/api/watchlist/boards?**", async (route) => {
+      if (!failed) {
+        failed = true;
+        await route.abort("failed");
+      } else await route.continue();
+    });
+    const dialog = await openAdd(page);
+    await dialog.getByLabel("Company *").fill("Stripe");
+    await expect(dialog.getByText(/Could not load this lookup/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Search again" }).click();
+    await expect(dialog.getByText("Selected (2/3)")).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await page.route("**/api/watchlist/suggestions?**", (route) => route.abort("failed"));
+    await page.getByRole("button", { name: "Suggest from applications" }).first().click();
+    const suggestions = page.getByRole("dialog", { name: "Suggest from applications" });
+    await expect(suggestions.getByRole("button", { name: "Try again" })).toBeVisible();
+    await page.unroute("**/api/watchlist/suggestions?**");
+    await suggestions.getByRole("button", { name: "Try again" }).click();
+    await expect(suggestions.getByText(/No suggestions/)).toBeVisible();
+  });
+
+  test("a lost reactivation response only permits retrying that reactivation", async ({ page }) => {
+    await page.goto("/watchlist");
+    let dialog = await openAdd(page);
+    await dialog.getByLabel("Company *").fill("Retry Watch");
+    await dialog.getByRole("button", { name: "Add to watchlist" }).click();
+    await expect(dialog).toBeHidden();
+    const row = page.getByTestId("watch-row").filter({ hasText: "Retry Watch" });
+    await row.getByRole("button", { name: "Deactivate Retry Watch" }).click();
+    await expect(row.getByText("Inactive", { exact: true })).toBeVisible();
+    dialog = await openAdd(page);
+    await dialog.getByLabel("Company *").fill("Retry Watch");
+    await dialog.getByRole("button", { name: "Add to watchlist" }).click();
+    await expect(dialog.getByRole("button", { name: "Reactivate it" })).toBeVisible();
+    let dropped = false;
+    await page.route("**/watchlist", async (route) => {
+      if (route.request().method() === "POST" && !dropped) {
+        dropped = true;
+        await route.fetch();
+        await route.abort("failed");
+      } else await route.continue();
+    });
+    await dialog.getByRole("button", { name: "Reactivate it" }).click();
+    await expect(dialog.getByRole("button", { name: "Retry reactivation" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Add to watchlist" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await dialog.getByRole("button", { name: "Retry reactivation" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByTestId("watch-row")).toHaveCount(1);
+    await expect(row.getByText("Active", { exact: true })).toBeVisible();
+  });
+
+  test("watchlist read endpoints return private JSON errors for signed-out callers", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    try {
+      for (const endpoint of ["boards?company=Stripe", "companies?text=Stripe", "suggestions"]) {
+        const response = await context.request.get(
+          `http://localhost:3100/api/watchlist/${endpoint}`,
+        );
+        expect(response.status()).toBe(401);
+        expect(response.headers()["cache-control"]).toContain("no-store");
+        expect(await response.json()).toMatchObject({
+          ok: false,
+          error: { code: "UNAUTHENTICATED" },
+        });
+      }
+    } finally {
+      await context.close();
+    }
+  });
 
   test("adding a company finds its boards; edit, stale edit, deactivate, duplicate, reactivate", async ({
     page,

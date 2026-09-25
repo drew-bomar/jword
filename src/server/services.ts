@@ -1,5 +1,6 @@
 import {
   createClock,
+  createCachedBoardDirectory,
   createFixtureBoardDirectory,
   createPublicBoardDirectory,
   createTrackerServices,
@@ -11,6 +12,7 @@ import {
 } from "@jword/core";
 import { serverEnv } from "@/lib/env";
 import type { WebSession } from "@/server/auth/session";
+import { assertBoardDirectoryEnvironment } from "./board-directory-env";
 
 let directory: BoardDirectory | undefined;
 
@@ -19,10 +21,11 @@ let directory: BoardDirectory | undefined;
  * they never call Greenhouse, Lever, or Ashby.
  */
 function boardDirectory(): BoardDirectory {
+  assertBoardDirectoryEnvironment(process.env);
   directory ??=
     process.env.JWORD_BOARD_DIRECTORY === "fixtures"
       ? createFixtureBoardDirectory(E2E_FIXTURE_BOARDS)
-      : createPublicBoardDirectory();
+      : createCachedBoardDirectory(createPublicBoardDirectory());
   return directory;
 }
 

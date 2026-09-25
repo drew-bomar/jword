@@ -8,5 +8,6 @@ export * from "./repositories/supabase";
 export * from "./services/index";
 export * from "./testing/fake-repository";
 export * from "./discovery/directory";
+export * from "./discovery/cache";
 export * from "./discovery/fixtures";
 export type { Database, Json } from "./db/database.types";

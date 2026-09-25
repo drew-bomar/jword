@@ -5,6 +5,7 @@ import { silentLogger, type Logger } from "../logging";
 import type { MutationContext, WatchlistRepository } from "../repositories/types";
 import { parseOrThrow } from "../validation/schemas";
 import { boardNameCandidates } from "../discovery/candidates";
+import { untilAborted } from "../discovery/cancellation";
 import { rateBoard } from "../discovery/rank";
 import type {
   ApplicationWatchSuggestion,
@@ -48,6 +49,8 @@ export interface WatchlistServiceDependencies {
 }
 
 const PROBE_CONCURRENCY = 6;
+export const MAX_DISCOVERY_PROBES = 15;
+export const DISCOVERY_TIMEOUT_MS = 12_000;
 const CONFIDENCE_ORDER: Record<BoardConfidence, number> = { high: 0, medium: 1, low: 2 };
 
 /** Run `fn` over `items` with at most `limit` in flight. */
@@ -173,24 +176,56 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
     async discoverCompanyBoards(
       input: unknown,
       actor: ActorContext,
+      options: { signal?: AbortSignal } = {},
     ): Promise<BoardDiscoveryResult> {
       const query = parseOrThrow(discoverBoardsSchema, input);
       return run("discover_company_boards", actor, undefined, async () => {
+        const timeout = AbortSignal.timeout(DISCOVERY_TIMEOUT_MS);
+        const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+        const warnings: string[] = [];
+        async function optionalRead<T>(
+          read: () => Promise<T>,
+          fallback: T,
+          warning: string,
+        ): Promise<T> {
+          try {
+            signal.throwIfAborted();
+            return await untilAborted(read(), signal);
+          } catch (error) {
+            if (toJwordError(error).code !== "INTERNAL_ERROR") throw error;
+            warnings.push(warning);
+            return fallback;
+          }
+        }
         let company: CompanyRef | null = null;
         if (query.companyId) {
-          company = await repository.getCompany(actor.userId, query.companyId);
+          signal.throwIfAborted();
+          company = await untilAborted(
+            repository.getCompany(actor.userId, query.companyId),
+            signal,
+          );
           if (!company) {
             throw new JwordError("NOT_FOUND", "Selected company was not found.", {
               reason: "COMPANY_NOT_FOUND",
             });
           }
         } else if (query.company) {
-          company = await repository.findCompanyByName(actor.userId, query.company);
+          company = await optionalRead(
+            () => repository.findCompanyByName(actor.userId, query.company!),
+            null,
+            "Saved company details could not be checked; these results use the name you entered.",
+          );
         }
         const name = company?.name ?? query.company!;
         const website = query.websiteUrl ?? company?.websiteUrl ?? null;
         const fromApplications = company
-          ? boardsFromUrls(await repository.listCompanyJobUrls(actor.userId, company.companyId))
+          ? boardsFromUrls(
+              await optionalRead(
+                () => repository.listCompanyJobUrls(actor.userId, company!.companyId),
+                [],
+                "Saved application links could not be checked.",
+              ),
+            )
           : [];
         const candidates = boardNameCandidates(name, website);
 
@@ -207,18 +242,42 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
             }
           }
         }
-        const outcomes: ProbeOutcome[] = boardDirectory
-          ? await mapPool(targets, PROBE_CONCURRENCY, (t) =>
-              boardDirectory.probe(t.provider, t.boardIdentifier),
-            )
-          : targets.map(() => ({ status: "error" }) as const);
-
+        // Only optional enrichment degrades. A selected company ID above must still be authorized.
+        const summaries = await optionalRead(
+          () => repository.listWatchSummaries(actor.userId),
+          null,
+          "Existing watches could not be checked. Board ownership is unknown; confirm choices before adding.",
+        );
         const watchers = new Map<string, { watchId: string; company: string }>();
-        for (const watch of await repository.listWatchSummaries(actor.userId)) {
+        for (const watch of summaries ?? []) {
           for (const board of watch.boards) {
             watchers.set(boardKey(board), { watchId: watch.watchId, company: watch.company });
           }
         }
+        if (targets.length > MAX_DISCOVERY_PROBES)
+          warnings.push(
+            `Only the first ${MAX_DISCOVERY_PROBES} boards were checked. Remaining saved links are unverified.`,
+          );
+        const outcomes: ProbeOutcome[] = await mapPool(
+          targets,
+          PROBE_CONCURRENCY,
+          async (target) => {
+            if (
+              !boardDirectory ||
+              signal.aborted ||
+              targets.indexOf(target) >= MAX_DISCOVERY_PROBES
+            )
+              return { status: "error" };
+            try {
+              return await untilAborted(
+                boardDirectory.probe(target.provider, target.boardIdentifier, signal),
+                signal,
+              );
+            } catch {
+              return { status: "error" };
+            }
+          },
+        );
 
         const suggestions: BoardSuggestion[] = [];
         targets.forEach((target, index) => {
@@ -270,6 +329,16 @@ export function createWatchlistServices(deps: WatchlistServiceDependencies) {
           candidates,
           suggestions,
           unavailable,
+          incomplete: SUPPORTED_BOARD_PROVIDERS.filter(
+            (provider) =>
+              !unavailable.includes(provider) &&
+              targets.some(
+                (target, index) =>
+                  target.provider === provider && outcomes[index]!.status === "error",
+              ),
+          ),
+          ownershipChecked: summaries !== null,
+          warnings,
         };
       });
     },

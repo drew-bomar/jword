@@ -4,7 +4,7 @@ import { publicEnv } from "@/lib/env";
 
 const PUBLIC_PATHS = ["/sign-in", "/auth/callback"];
 /** JSON endpoints answer a signed-out caller with 401 themselves instead of a sign-in redirect. */
-const API_PATHS = ["/api/extension/"];
+const API_PATHS = ["/api/extension/", "/api/watchlist/"];
 
 /** Refreshes the auth cookie on every request and redirects signed-out visitors. */
 export async function updateSession(request: NextRequest) {
