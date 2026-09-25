@@ -9,6 +9,10 @@ table and are found for the owner instead of typed in.
 time budgets, partial-result reporting, public-evidence caching, guarded fixtures, validated Ashby
 fallback, and stable IDs for retained boards. The initial implementation details below are historical.
 
+**Amended by [decision 022](022-workday-boards.md):** Workday boards (`account/cluster/site`) are
+recognized from links and checked, but never guessed from a name; discovery also checks up to
+three board links the owner supplies (`boardUrls`).
+
 ## Context
 
 With decision 018 the owner had to find each company's job-board URL by hand. The owner wants

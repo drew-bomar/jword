@@ -63,8 +63,11 @@ IMPORTED
 GREENHOUSE
 LEVER
 ASHBY
+WORKDAY
 OTHER
 ```
+
+`WORKDAY` was added by `20260924000200_workday_provider.sql` ([decision 022](decisions/022-workday-boards.md)).
 
 ### `watch_event_type` (decision 018)
 
@@ -288,6 +291,14 @@ preserves IDs and `created_at` for retained boards, including reorders. The posi
 constraint is deferrable during reconciliation and is checked before returning. Removed boards
 remain deleted configuration. Create/update lock company before watch and translate concurrent
 board claims into `BOARD_ALREADY_WATCHED`; duplicate canonical URLs are rejected before writing.
+
+Migration `20260924000300_workday_boards.sql` ([decision 022](decisions/022-workday-boards.md))
+makes identifiers provider-specific. `jword.canonical_board_url(provider, identifier)` returns the
+canonical URL, or null when the identifier is invalid for that provider; the shape check,
+`resolve_board_url`, and the command validator use it. Greenhouse/Lever/Ashby keep
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`. Workday stores `{account}/{cluster}/{site}` (lowercase DNS
+label / `wd` + digits / `[A-Za-z0-9][A-Za-z0-9_-]{0,99}`) with URL
+`https://{account}.{cluster}.myworkdayjobs.com/{site}`.
 
 ### `company_watch_activities` (decision 018)
 

@@ -7,6 +7,10 @@ and implementing this record in one run). Narrows one item of the v1 exclusions;
 `company_watch_boards` (up to three per watch) and are found by board discovery. The
 one-board columns described below were dropped.
 
+**Amended by [decision 022](022-workday-boards.md) (2026-09-24):** `ats_provider` gains `WORKDAY`
+with its own `account/cluster/site` identifier rule; the single identifier pattern below now
+applies to Greenhouse, Lever, and Ashby only.
+
 **Amended by [decision 021](021-watch-deletion.md) (2026-09-24):** confirmed deletion now removes
 watch/board configuration while retaining companies, applications, and audit history. The
 deactivation-only removal rule below is historical; pausing monitoring still uses deactivation.

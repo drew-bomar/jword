@@ -245,7 +245,13 @@ watchlist services as the web page. None fetches or stores job postings; only
   `version`, `interestLevel`, `applicationCount`, with `hasMore` / `nextCursor`. No notes.
 - `get_watched_company` (read-only): `{ watchId }`. The watch with company website and notes
   (user data), plus recent audit entries.
-- `discover_company_boards` (read-only, open world): `{ company? | companyId?, websiteUrl? }`.
+- `discover_company_boards` (read-only, open world): `{ company? | companyId?, websiteUrl?, boardUrls?, mode? }`.
+  `boardUrls` (up to three, [decision 022](decisions/022-workday-boards.md)) are board links the
+  user gave; each recognized board, including Workday, is checked first and marked `requested`.
+  Workday is never guessed from a name. Direct board URLs in the company website field also add evidence.
+  `mode: "verify"` checks only the supplied recognized links; no name guesses or saved-application
+  probes. `verification` in each suggestion distinguishes `found`, `missing`, and `error` from
+  confidence about which company owns the board.
   Ranked suggestions (`provider`, `boardIdentifier`, `boardUrl`, `confidence` high/medium/low,
   `reasons`, `openJobs`, `sampleTitles`, `fromApplications`, `watchedBy`) plus the names tried and
   any unreachable providers. Saves nothing ([decision 019](decisions/019-board-discovery.md)).

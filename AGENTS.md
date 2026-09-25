@@ -128,8 +128,10 @@ When updating jword through the `jword` MCP server:
    `requestId`, and `confirmed: true`. It deletes the watch/boards and keeps companies, applications,
    and history. Pause/deactivate still means `set_company_watch_status` with `active: false`.
    On stale deletion, read again and obtain fresh confirmation; retry lost responses identically.
-   `update_watched_company` with `boards` replaces the whole set. No tool fetches or stores job
-   postings.
+   `update_watched_company` with `boards` replaces the whole set. Workday boards (decision 022)
+   are never guessed: when the user gives a board or posting link, pass it in
+   `discover_company_boards` `boardUrls` and use the returned `boardIdentifier`
+   (`account/cluster/site`); never build one by hand. No tool fetches or stores job postings.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

@@ -4,6 +4,9 @@ Status: Accepted by the owner on 2026-09-22. Replaces the side panel from
 [decision 016](016-browser-extension-capture.md) and amends
 [decision 005](005-web-server-actions.md) for this one adapter.
 
+Follow-up: [decision 023](023-watch-capture-and-board-verification.md) adds three watch-capture
+operations to this allowlist, using the same session and Origin boundary.
+
 ## Context
 
 Decision 016 reviewed captures in Chrome's side panel, which framed jword's `/capture` page. The

@@ -35,6 +35,27 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
 12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
     signed-in user to `/forbidden` with a sign-out button.
 
+## Workday boards (decision 022)
+
+Needs migrations `20260924000200` and `20260924000300` on the database the app uses. Board
+checks call the real Workday endpoint from your dev server.
+
+1. **Paste a posting link.** Add company → "NVIDIA" → paste
+   `https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/…` (any NVIDIA
+   posting) → Add → a Workday `nvidia/wd5/NVIDIAExternalCareerSite` row appears, ticked, with
+   "2000+ open jobs", sample titles, and "Checked from your link". No Workday board appears
+   before you paste (it is never guessed).
+2. **Other URL family.** Paste `https://wd5.myworkdaysite.com/en-US/recruiting/nvidia/NVIDIAExternalCareerSite`
+   → it becomes the same board ("already selected" if the first is still selected).
+3. **Missing board.** Paste `https://nvidia.wd5.myworkdayjobs.com/NoSuchSite` → the row says
+   "Unlikely match" and "The board no longer exists". Untick it before saving.
+4. **Save.** Add to watchlist → the row lists "Workday nvidia/wd5/NVIDIAExternalCareerSite" and
+   "Started watching NVIDIA (Workday …)". Adding the same board to another company is refused.
+5. **From applications.** A company whose saved application links to a Workday posting shows
+   that board as a Strong match when you add it, and under Suggest from applications.
+6. **Agent.** Ask Claude Code/Codex to watch a company and give it a Workday link → it calls
+   `discover_company_boards` with `boardUrls`, then adds the board after confirming.
+
 ## Company watchlist (decisions 018, 019)
 
 Board lookups call the real Greenhouse, Lever, and Ashby APIs from your dev server.
@@ -47,9 +68,10 @@ Board lookups call the real Greenhouse, Lever, and Ashby APIs from your dev serv
 3. **Weak matches.** Add a company whose name is common (for example "Notion"). Strong matches are
    ticked; Possible/Unlikely ones are shown but unticked with the reason (for example a different
    board name). Tick only what is right.
-4. **Nothing found.** Add a company that uses Workday (for example a large bank) → "No public
-   Greenhouse, Lever, or Ashby board found" with the names tried. Paste its careers URL under Add a
-   board by URL → it is kept as a careers page. Saving with no board also works.
+4. **Nothing found.** Add a company with no Greenhouse, Lever, or Ashby board → "No public
+   Greenhouse, Lever, or Ashby board found" with the names tried and "Workday boards are not
+   guessed". Paste a non-board careers URL under Add a board by URL → it is kept as a careers page
+   and nothing is fetched. Saving with no board also works.
 5. **Three at most.** With three boards selected, adding a fourth by URL says "at most 3" and the
    remaining checkboxes are disabled.
 6. **Suggest from applications.** Click Suggest from applications → companies you applied to via
@@ -149,3 +171,31 @@ Follow `docs/MCP_SETUP.md` to register the server, then in the agent:
 - Interrupt a save response after commit. Retry the original save; there must be only one application/note/import and one corresponding activity. Inputs stay locked until the result is confirmed.
 - Browse beyond 200 applications and 50 notes/activity entries using More/First links. Changing a table filter returns to its first page.
 - Direct RPC calls with an unknown field, non-HTTP URL, invalid date, oversized value, or wrong JSON type must fail without any rows or receipts being added. Automated checks cover this locally.
+
+## Workday review fixes and extension watch capture (decision 023)
+
+1. Run `pnpm ext:build`, reload jword in `chrome://extensions`, and refresh the board tab.
+   Start the updated jword server and sign in normally. The two Workday migrations from
+   decision 022 must already be applied to the database this server uses.
+2. Open a Workday board or posting, click the jword toolbar icon, then **Watch this company**.
+   Confirm/correct the company, choose an existing company if appropriate, and **Add to
+   watchlist**. Check that the watch has one Workday board and no application was created.
+   Repeat with a `wd5.myworkdaysite.com/recruiting/account/site` URL: the company guess should
+   be the account, never “Wd5”.
+3. Reopen capture for that company. It should show that the company or board is already watched
+   and link to the watchlist, without replacing existing boards or reactivating the watch.
+4. In Add company, enter a company name and put its direct Workday board link into Website.
+   Discovery should offer that board without pasting it into the board picker.
+5. If you have a pre-Workday watch whose board is saved as Other, edit it and select **Use
+   Workday board** beside the selected link. The selected count should stay the same; save and
+   reopen to check the provider. This also works when three boards are already selected.
+6. Paste a known board in the picker. Its check should report only that board. Use **Find
+   boards/Search again** when you want a broader company search. The browser's network panel
+   should show `mode=verify` on the pasted-board lookup.
+7. For a missing/unreachable board, extension capture must label the uncertainty and require
+   the unverified-save checkbox. If a save response is lost, **Retry watch save** must retain
+   the command; close and mode-switch buttons stay disabled until confirmed.
+
+Automated browser tests cover the extension save/retry path and endpoint access checks, but
+could not run in the review sandbox because binding the Playwright server to port 3100 was
+refused (`EPERM`). Real Workday availability and the Chrome toolbar flow need manual verification.

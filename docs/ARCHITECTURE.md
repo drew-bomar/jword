@@ -52,7 +52,7 @@ flowchart TD
 
 ### Web server entry points
 
-Use Next.js Server Actions for web mutations. Next.js handles the browser's HTTP POST request and dispatches it to the action; the browser does not execute database code. Each action verifies the caller and passes a validated command to the shared service. Use Server Components for server-rendered reads through the shared service layer. Reserve Route Handlers for explicit HTTP needs such as an authentication callback; do not create a parallel REST mutation API for the tracker. See [decision 005](decisions/005-web-server-actions.md). The one exception is the capture extension's five origin-restricted endpoints ([decision 017](decisions/017-extension-overlay-capture-api.md)).
+Use Next.js Server Actions for web mutations. Next.js handles the browser's HTTP POST request and dispatches it to the action; the browser does not execute database code. Each action verifies the caller and passes a validated command to the shared service. Use Server Components for server-rendered reads through the shared service layer. Reserve Route Handlers for explicit HTTP needs such as an authentication callback; do not create a parallel REST mutation API for the tracker. See [decision 005](decisions/005-web-server-actions.md). The one exception is the capture extension's origin-restricted endpoints ([decision 017](decisions/017-extension-overlay-capture-api.md)).
 
 Responsibilities:
 
@@ -314,7 +314,7 @@ Approved in [decision 016](decisions/016-browser-extension-capture.md), with the
 an in-page overlay by [decision 017](decisions/017-extension-overlay-capture-api.md). A Chrome
 extension reads a job posting and draws a review panel in the job tab. The panel is an extension
 page in a closed shadow root, pinned right and pushing the page over. It reaches jword only
-through the extension's background worker. The worker calls five origin-restricted JSON endpoints
+through the extension's background worker. The worker calls eight origin-restricted JSON endpoints
 with the owner's normal session cookie. The extension holds no credentials of its own.
 
 ```mermaid
@@ -386,14 +386,16 @@ flowchart LR
 `company_watch_boards`, and jword finds them. `discoverCompanyBoards` combines saved application
 links with lookups on Greenhouse, Lever, and Ashby's public APIs, using names generated from the
 company name and website, and ranks each board with reasons. The owner, or the agent following
-AGENTS.md, picks which to keep.
+AGENTS.md, picks which to keep. [Decision 022](decisions/022-workday-boards.md) adds Workday:
+recognized from saved or pasted links and checked, never guessed from a name. Supplied board
+links (`boardUrls`) are checked first for every provider.
 
 ```mermaid
 flowchart LR
-    F["Add dialog: company typed"] --> A["discoverBoardsAction (session)"]
+    F["Add dialog: company typed or link pasted"] --> A["GET /api/watchlist/boards (session)"]
     A --> S["discoverCompanyBoards"]
     S --> L["Saved job URLs (repository)"]
-    S --> D["BoardDirectory: Greenhouse, Lever, Ashby (fixed hosts, timeouts)"]
+    S --> D["BoardDirectory: Greenhouse, Lever, Ashby, Workday (provider hosts, timeouts)"]
     S --> R["rateBoard: high / medium / low + reasons"]
     R --> F
 ```
@@ -413,3 +415,12 @@ Discovery caps all evidence sources together at 15 probes and 12 seconds of serv
 Public evidence alone is cached for five minutes with bounded concurrency/storage; local ownership
 reads stay fresh. Partial failures and unknown board ownership are explicit in the result. See
 [decision 020](decisions/020-watchlist-reliability.md) for the complete contract and tradeoffs.
+
+### Board capture and verification (decision 023)
+
+The extension can add a watch from the recognized current board, without an application or a
+pasted URL. Its `search-companies`, `verify-boards`, and `add-watch` endpoints reuse the owner
+session and shared watchlist services. Verification probes only supplied recognized URLs;
+full discovery also uses direct board URLs in the company website field. Legacy Other links
+are upgraded explicitly in place. Public evidence cache identity matches database uniqueness.
+See [decision 023](decisions/023-watch-capture-and-board-verification.md) for the boundary and tradeoff.
