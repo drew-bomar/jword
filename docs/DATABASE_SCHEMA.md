@@ -464,3 +464,49 @@ The wrappers validate raw input with `jword.validate_watch_command` (a spec-driv
 migration 005 rules) before the private implementations run. Every write commits the watch row,
 any company-field change, one audit row, the version bump, and the `mutation_requests` receipt
 in one transaction. See [decision 018](decisions/018-company-watchlist.md).
+
+## Job collection and leads (migration 20260925000100)
+
+[Decision 024](decisions/024-job-collection-and-leads.md). Enums: `lead_review_status`
+(`NEW`, `DISMISSED`, `PROMOTED`), `lead_availability` (`AVAILABLE`, `UNAVAILABLE`),
+`lead_scan_status` (`RUNNING`, `COMPLETE`, `PARTIAL`, `FAILED`), `lead_event_type`
+(`LEAD_DISMISSED`, `LEAD_RESTORED`, `LEAD_PROMOTED`).
+
+- `lead_sources`: `user_id`, `company_id` (owner FK, restrict), `provider`, `board_identifier`,
+  generated `board_key = lower(board_identifier)`, `board_url`, last scan status/time, last
+  complete scan time. Unique `(user_id, provider, board_key)`. Check: supported provider and
+  `board_url = jword.canonical_board_url(provider, board_identifier)`. No foreign key to watch
+  configuration: deleting a watch or board keeps its sources and leads.
+- `lead_scans`: `source_id` (owner FK, restrict), historical `watch_id` (no FK), `company_id`,
+  `actor_type`, `status`, `reason` (`^[A-Z_]{1,40}$`), `reported_total`, counts (seen, created,
+  updated, relisted, unavailable), `started_at`, `finished_at` (null exactly while RUNNING).
+- `leads`: `source_id`, `company_id`, `application_id` (all owner FKs, restrict),
+  `provider_posting_id` (≤500), `title` (≤500), `location` (≤500), `job_url` (http(s), ≤2048),
+  `description` (≤10,000), `posted_on` (stated by the provider only), `first_seen_at`,
+  `last_seen_at`, `last_scan_id`, `availability` + `unavailable_at`, `review_status` +
+  `reviewed_at`, `version`. Unique `(user_id, source_id, provider_posting_id)`. Checks:
+  `PROMOTED ⇔ application_id not null`; `UNAVAILABLE ⇔ unavailable_at not null`.
+- `lead_activities`: append-only audit of review changes (`lead_id` owner FK, restrict).
+- `lead_overview` (security invoker): leads with company name and source provider/identifier,
+  without descriptions.
+
+Owner-only RLS select on all four tables and the view; no direct writes for authenticated users.
+Functions: `begin_lead_scan`, `record_lead_postings` (≤500 postings per call; never changes
+review status or version), `finish_lead_scan` (only `COMPLETE` marks postings last seen before
+the scan unavailable), `set_lead_review_status`, and `create_application_from_lead` (calls
+`jword.create_tracked_job`, links the lead, audits, and saves the retry receipt in one
+transaction).
+
+## Application deletion (migration 20260925000200)
+
+[Decision 025](decisions/025-application-deletion.md). `public.delete_application(owner, actor,
+request_id, {applicationId, expectedVersion, confirmed: true})` checks the retry receipt, locks
+the application at the expected version, returns linked leads to `NEW` (with `LEAD_RESTORED`
+audit), deletes the application (notes and activities cascade) and its `jobs` row, and saves the
+receipt, in one transaction. Companies are kept.
+
+Review migration `20260925000300_lead_review_hardening.sql` adds the partial unique index
+`lead_scans_one_running_per_source (user_id, source_id) WHERE status = 'RUNNING'`. Scan functions
+lock source before scan, matching stale recovery. The shared `jword.create_tracked_job` serializes
+creation per owner with a transaction advisory lock before checking duplicates. Function
+signatures, grants, and generated database types are unchanged.

@@ -35,6 +35,40 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
 12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
     signed-in user to `/forbidden` with a sign-out button.
 
+## Delete an application (decision 025)
+
+Needs migration `20260925000200_delete_application.sql` on the database the app uses.
+
+1. Open an application → **Edit details** → **Delete application** → the confirmation names the
+   role and company. **Cancel** returns to the first step; nothing is deleted.
+2. **Delete permanently** → you land on Applications with "Deleted application for …"; the row
+   is gone. The company still appears on the watchlist or in company search.
+3. Create an application from a lead, delete that application, then open Leads → the lead is
+   back in New and **Create application** works again.
+
+## Check for new jobs and Leads (decision 024)
+
+Needs migration `20260925000100_leads.sql` on the database the app uses. Checks call the real
+providers from your server. About five minutes:
+
+1. **Empty inbox.** Open Leads with no watches → "Watch companies first".
+2. **Check all.** Watch Stripe (Greenhouse) → Leads → **Check for new jobs** → the summary lists
+   each board as Complete with jobs read and new leads; rows show title, company, location,
+   Greenhouse, Listed, and when found. The title opens the posting.
+3. **Repeat.** Check again → "0 new leads"; the row count does not change.
+4. **Dismiss / Restore.** Dismiss a lead → it leaves New. Review: Dismissed → it is there →
+   Restore → it returns to New. Check again → a dismissed lead stays dismissed.
+5. **Create application.** Create application on a lead → confirm → a toast offers Open; the
+   application is Saved with the link, location, source (provider), and today as date found.
+   Review: Application created → View application. Try a lead whose title you already applied
+   to → "Possible duplicate" → Create anyway only if intended.
+6. **Partial scan.** Watch NVIDIA with its Workday link → on the watchlist row click **Check
+   jobs** → the toast reports the board as incomplete ("Workday reports at most 2000 jobs").
+   Its leads stay Listed; nothing is marked no longer listed.
+7. **Careers page.** A company with only a careers page reports "Not supported".
+8. **Deletion keeps leads.** Delete a watch that has leads → its leads remain on Leads. Re-add
+   the same board and check → "0 new leads" (no duplicates).
+
 ## Workday boards (decision 022)
 
 Needs migrations `20260924000200` and `20260924000300` on the database the app uses. Board

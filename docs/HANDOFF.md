@@ -2,6 +2,146 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Codex review of Leads and application deletion (2026-09-25)
+
+Reviewed the uncommitted `claude/job-collection` work on `bb7a2c7` (main after PR #4), preserving
+existing changes and the owner's successful Workday extension watch-add through localhost:3200.
+`docs/CLAUDE_CATCHUP.md` was absent; this handoff and decisions 024/025 supplied the review context.
+No commits, pushes, deployments, or database changes were made in this review.
+
+Corrections:
+
+- Duplicate probes could race between two different leads or lead/manual creation. The shared
+  creation helper now serializes the duplicate probe and insert per owner.
+- Stale recovery and finish could deadlock by locking source/scan in opposite orders. Scan
+  writes now consistently lock source then scan; a unique index enforces one running scan.
+- Edit details allowed editing/cancelling during an unconfirmed delete, losing its retry state.
+  Edit and delete now lock each other's controls while pending or unconfirmed, and derive lock
+  state from the retry helper (including the known missing-function exception).
+- Overlapping Lever pages, inconsistent Workday totals, and the exact 5,000-posting cap could
+  report complete. They now report partial, protecting unseen leads from false unavailability.
+- Malformed later Lever pages discarded earlier pages; invalid dates could lose a board or
+  reject a whole saved chunk. Keep earlier valid postings, skip malformed entries, report partial.
+  Greenhouse numeric HTML entities now decode along with escaped tags.
+- Failed finish calls aborted the whole check. They now report FINISH_UNCONFIRMED for one board;
+  authorization failures stop starting further boards. Browser transport failures retain the inbox
+  and explain that some results may already be saved.
+
+**New migration pending locally too:** `20260925000300_lead_review_hardening.sql`. The original
+two migrations remain unchanged. In a normal terminal connected to the local stack, apply it
+with `pnpm exec supabase migration up --local`, then rerun integration and browser checks.
+Do not use `db push` for this review. Nothing here is deployed or applied to hosted Supabase.
+
+Verification: `pnpm check` passed (format, lint, all typechecks, 366 unit tests); `pnpm mcp:build`
+and `JWORD_E2E=1 pnpm build --webpack` passed. Integration execution was blocked by sandbox
+`EPERM` on local Postgres `127.0.0.1:54329` (and local Auth fetch failures); Playwright was blocked
+by `listen EPERM` on port 3100. The new SQL migration, lock-race tests, rollback/grant tests, and
+browser regressions therefore still need execution outside this sandbox. No visual/manual
+browser verification was performed in this review.
+
+Runtime remains UI → authenticated Server Action → shared service → repository → atomic SQL;
+collection also calls the bounded public-provider collector between scan begin and chunk writes.
+Key review code: `collection/collector.ts`, `services/leads.ts`, the new migration (lock helper and
+creation helper), and `edit-details-dialog.tsx` / `delete-application.tsx`. The tradeoff is brief
+serialization of creates per owner in exchange for reliable duplicate warnings. No new product
+decision is required.
+
+Follow-up run outside the sandbox (Claude, 2026-09-25): applied `20260925000300` locally;
+`pnpm check` 366, `pnpm test:integration` 68, `pnpm test:e2e` 62 passed (28 intentional skips).
+Two fixes: the manual-creation variant of the duplicate-serialization test omitted the required
+`company` field (it failed validation instead of waiting on the lock); and Edit details now stays
+disabled until the post-save refresh lands, which removes the intermittent "reopen shows old
+values" failure (20/20 repeats pass).
+
+Manual verification after local migration/tests:
+
+1. Check Leads and a Workday watch; capped/partial scans must retain unseen leads and explain why.
+2. Dismiss/promote while checking from a second tab; review status, links, and versions must survive.
+3. Exercise simultaneous matching creates; the second should show duplicate confirmation.
+4. Delete from Edit details on desktop/mobile; Cancel preserves the record, confirmed deletion
+   restores its linked lead to New. Run the added lost-response browser tests to verify locked
+   controls and replay of the original request.
+
+## Delete an application (2026-09-25)
+
+[Decision 025](decisions/025-application-deletion.md), on the same branch as Leads. Edit details
+now has **Delete application** with a second confirmation step. It permanently removes the
+application, its job details, notes, and history; the company stays; a lead it came from returns
+to New. Web only. Retry after a lost response is safe (same request id returns the original
+result). Runtime: DeleteApplication → `deleteApplicationAction` → `deleteApplication` →
+`public.delete_application` → one transaction. Key files:
+`src/features/applications/delete-application.tsx` and
+`supabase/migrations/20260925000200_delete_application.sql`. Tradeoff: no audit history of a
+deleted application remains (owner's choice for clean testing); there is no undo.
+
+Verification (local stack): `pnpm check` (350 unit tests), `pnpm test:integration` (61),
+`pnpm test:e2e` (56 passed, 28 intentional skips), MCP and production builds passed.
+
+**Pending hosted migrations (both local only):** `20260925000100_leads.sql` and
+`20260925000200_delete_application.sql`. Apply with `pnpm exec supabase db push`, confirm with
+`pnpm exec supabase migration list --linked`, then deploy.
+
+## Check for new jobs and Leads (2026-09-25)
+
+[Decision 024](decisions/024-job-collection-and-leads.md). Branch `claude/job-collection` (from
+`main` after PR #4). **Check for new jobs** reads every board of every active watch (Leads page)
+or of one company (watchlist row **Check jobs**) and saves the postings as leads. The Leads page
+lists them with search, company/review/listing filters, the posting link, Dismiss/Restore, and
+Create application. Collection never creates applications. This is the deterministic base for
+later agent review; no MCP tools, scheduling, ranking, or LLM calls were added.
+
+Behavior:
+
+- Greenhouse, Lever, Ashby, and Workday are read with provider-specific paging, three boards at
+  a time, 45 seconds per board, 240 seconds per check. Each board reports complete, partial,
+  failed, or not supported (careers pages) with a reason; one failure never stops the others.
+- A posting is stored once per owner and board (provider + case-insensitive identifier +
+  provider posting id). Re-checks refresh it without touching Dismissed/Application created.
+- **Only a complete scan marks unseen postings "No longer listed"**; partial, failed, and
+  Workday-capped scans never do. A posting seen again becomes Listed again.
+- Leads and their source survive watch deletion and board removal; re-adding the board reuses
+  them. Posting dates are stored only when the provider states one (never for Workday).
+- Create application makes a Saved application from the lead (usual duplicate check, retry-safe
+  request id), links it, and marks the lead Application created, in one transaction.
+
+Runtime trace (one board): **Check for new jobs** → `checkForNewJobsAction` (session) →
+`checkForNewJobs` (`packages/core/src/services/leads.ts`) → `repository.beginLeadScan` →
+`begin_lead_scan` (board still on the watch? one running scan per board) →
+`JobCollector.collect("GREENHOUSE", "stripe")` (`collection/collector.ts`, one request) →
+`recordLeadPostings` → `record_lead_postings` in chunks of 250 (insert new, refresh known) →
+`finishLeadScan` → `finish_lead_scan` (COMPLETE: mark postings last seen before the scan as
+unavailable) → per-board report → summary panel and `router.refresh()` → `/leads` reads
+`lead_overview` through RLS.
+
+Key files:
+
+- `packages/core/src/collection/collector.ts`: provider paging and complete/partial/failed rules.
+- `packages/core/src/services/leads.ts`: check orchestration, budgets, and failure isolation.
+- `supabase/migrations/20260925000100_leads.sql`: tables, availability rules, review functions.
+- `src/features/leads/lead-actions.tsx`: Dismiss/Restore and Create application with retries.
+
+Tradeoff: a check runs inside a Server Action (simple, same auth path) rather than a background
+job, so the page waits for it (up to about four minutes for many large boards) and other actions
+on that page queue behind it. A scheduled/background check is the natural next step.
+
+Limits: Workday boards at the 2000 cap are always partial; Workday leads have no description or
+date; an interrupted scan blocks that board for up to five minutes; Server Action duration relies
+on `maxDuration = 300` on `/leads` and `/watchlist` (Vercel allows up to 300 s by default).
+
+Verification (local Supabase stack): `pnpm check` (format, lint, typecheck, 347 unit tests),
+`pnpm test:integration` (58, including 6 new lead database tests), `pnpm test:e2e` (54 passed,
+28 intentional desktop/mobile skips), `pnpm mcp:build`, `pnpm ext:build`, and
+`JWORD_E2E=1 pnpm build --webpack` all passed. Live read-only collection on 2026-09-25: Datadog
+Greenhouse 449 complete, Palantir Lever 321 complete, Ramp Ashby 157 complete, Salesforce
+Workday 1,527/1,527 complete (13 s), NVIDIA Workday 2,000 partial/TOTAL_CAPPED (25 s). No checks
+were blocked by missing credentials.
+
+**Pending hosted migration:** `20260925000100_leads.sql` is applied to the local stack only.
+Apply it to the database the app uses (`pnpm exec supabase db push`, then confirm with
+`pnpm exec supabase migration list --linked`) before deploying this branch; the new code needs
+it, and the current production code is unaffected by it. Then follow **Check for new jobs and
+Leads** in [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md) (about five minutes).
+
 ## Workday review fixes and watch capture (2026-09-25)
 
 Latest owner verification: Chrome extension **Watch this company** successfully added a watch

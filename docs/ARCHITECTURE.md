@@ -424,3 +424,31 @@ session and shared watchlist services. Verification probes only supplied recogni
 full discovery also uses direct board URLs in the company website field. Legacy Other links
 are upgraded explicitly in place. Public evidence cache identity matches database uniqueness.
 See [decision 023](decisions/023-watch-capture-and-board-verification.md) for the boundary and tradeoff.
+
+## Job collection and leads (2026-09-25)
+
+[Decision 024](decisions/024-job-collection-and-leads.md). "Check for new jobs" reads watched
+boards and saves postings as leads; the Leads page reviews them.
+
+```mermaid
+flowchart LR
+    B["Check for new jobs (Leads page or watchlist row)"] --> A["checkForNewJobsAction (session)"]
+    A --> S["checkForNewJobs (shared service)"]
+    S --> W["Watch + boards (repository)"]
+    S --> C["JobCollector: Greenhouse, Lever, Ashby, Workday (paged, bounded)"]
+    S --> R["begin → record (chunks) → finish lead scan (SQL)"]
+    R --> L["leads / lead_sources / lead_scans"]
+    I["Leads page: Dismiss, Create application"] --> X["Server Actions → shared services → SQL functions"]
+    X --> L
+```
+
+Collection never creates applications and never changes review status. Only a complete scan
+marks postings unavailable. Leads live apart from `jobs` and from watch configuration, so they
+survive watch and board deletion. MCP tools for leads are deferred.
+
+Review hardening (`20260925000300_lead_review_hardening.sql`): begin, record, and finish lock
+source before scan; a partial unique index enforces one RUNNING scan per owner/source. Every
+application creation path takes the same per-owner transaction lock around the duplicate probe
+and insert. This briefly queues simultaneous creates (including imports) so two leads or a lead
+and a manual create cannot both pass the duplicate warning. A failed scan finish is reported as
+unconfirmed for that board, without stopping other boards or claiming availability was unchanged.
