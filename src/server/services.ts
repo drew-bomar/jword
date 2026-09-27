@@ -2,12 +2,16 @@ import {
   createClock,
   createCachedBoardDirectory,
   createFixtureBoardDirectory,
+  createFixtureJobCollector,
   createPublicBoardDirectory,
+  createPublicJobCollector,
   createTrackerServices,
   E2E_FIXTURE_BOARDS,
+  E2E_FIXTURE_POSTINGS,
   stderrLogger,
   SupabaseTrackerRepository,
   type BoardDirectory,
+  type JobCollector,
   type TrackerServices,
 } from "@jword/core";
 import { serverEnv } from "@/lib/env";
@@ -29,6 +33,21 @@ function boardDirectory(): BoardDirectory {
   return directory;
 }
 
+let collector: JobCollector | undefined;
+
+/**
+ * Reads every posting on a watched board (decision 024). Uses the same fixture switch and
+ * guard as board discovery, so browser tests never call real providers.
+ */
+function jobCollector(): JobCollector {
+  assertBoardDirectoryEnvironment(process.env);
+  collector ??=
+    process.env.JWORD_BOARD_DIRECTORY === "fixtures"
+      ? createFixtureJobCollector(E2E_FIXTURE_POSTINGS)
+      : createPublicJobCollector();
+  return collector;
+}
+
 /** Shared services bound to the signed-in user's own Supabase client (RLS applies). */
 export function servicesFor(session: WebSession): TrackerServices {
   return createTrackerServices({
@@ -36,5 +55,6 @@ export function servicesFor(session: WebSession): TrackerServices {
     clock: createClock(serverEnv().timeZone),
     logger: stderrLogger,
     boardDirectory: boardDirectory(),
+    jobCollector: jobCollector(),
   });
 }

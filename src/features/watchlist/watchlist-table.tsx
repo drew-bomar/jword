@@ -16,6 +16,7 @@ import { SuggestFromApplicationsDialog } from "./suggest-dialog";
 import { AddWatchDialog, EditWatchDialog } from "./watch-dialogs";
 import { WatchStatusButton } from "./watch-status-button";
 import { DeleteWatchDialog } from "./delete-watch-dialog";
+import { CheckWatchButton } from "@/features/leads/check-jobs";
 
 function Boards({ watch }: { watch: WatchedCompany }) {
   if (!watch.boards.length) {
@@ -71,6 +72,11 @@ function LastChange({ watch }: { watch: WatchedCompany }) {
 function Actions({ watch }: { watch: WatchedCompany }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-1">
+      <CheckWatchButton
+        watchId={watch.watchId}
+        company={watch.company}
+        companyId={watch.companyId}
+      />
       <EditWatchDialog watch={watch} />
       <WatchStatusButton
         watchId={watch.watchId}

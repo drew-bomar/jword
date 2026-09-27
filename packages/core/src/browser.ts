@@ -10,3 +10,5 @@ export * from "./domain/match";
 export * from "./capture/index";
 export * from "./watchlist/index";
 export * from "./discovery/index";
+export * from "./collection/index";
+export * from "./leads/index";

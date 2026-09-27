@@ -156,6 +156,18 @@ export const updateApplicationNoteSchema = z.strictObject({
 });
 export type UpdateApplicationNoteCommand = z.infer<typeof updateApplicationNoteSchema>;
 
+/**
+ * Permanently delete an application with its job details, notes, and history (decision 025).
+ * The company stays; a lead created into this application returns to New.
+ */
+export const deleteApplicationSchema = z.strictObject({
+  requestId: requestIdSchema,
+  applicationId: uuidSchema,
+  expectedVersion: versionSchema,
+  confirmed: z.literal(true, { error: "Confirm deleting this application." }),
+});
+export type DeleteApplicationCommand = z.infer<typeof deleteApplicationSchema>;
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------

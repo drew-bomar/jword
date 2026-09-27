@@ -450,6 +450,282 @@ export type Database = {
           },
         ]
       }
+      lead_activities: {
+        Row: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          created_at: string
+          id: string
+          lead_id: string
+          metadata: Json
+          occurred_at: string
+          summary: string
+          type: Database["public"]["Enums"]["lead_event_type"]
+          user_id: string
+        }
+        Insert: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          created_at?: string
+          id?: string
+          lead_id: string
+          metadata?: Json
+          occurred_at?: string
+          summary: string
+          type: Database["public"]["Enums"]["lead_event_type"]
+          user_id: string
+        }
+        Update: {
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          created_at?: string
+          id?: string
+          lead_id?: string
+          metadata?: Json
+          occurred_at?: string
+          summary?: string
+          type?: Database["public"]["Enums"]["lead_event_type"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_owner_fkey"
+            columns: ["user_id", "lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_overview"
+            referencedColumns: ["user_id", "lead_id"]
+          },
+          {
+            foreignKeyName: "lead_activities_lead_owner_fkey"
+            columns: ["user_id", "lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
+      lead_scans: {
+        Row: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          company_id: string
+          created_count: number
+          finished_at: string | null
+          id: string
+          postings_seen: number
+          reason: string | null
+          relisted_count: number
+          reported_total: number | null
+          source_id: string
+          started_at: string
+          status: Database["public"]["Enums"]["lead_scan_status"]
+          unavailable_count: number
+          updated_count: number
+          user_id: string
+          watch_id: string
+        }
+        Insert: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          company_id: string
+          created_count?: number
+          finished_at?: string | null
+          id?: string
+          postings_seen?: number
+          reason?: string | null
+          relisted_count?: number
+          reported_total?: number | null
+          source_id: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["lead_scan_status"]
+          unavailable_count?: number
+          updated_count?: number
+          user_id: string
+          watch_id: string
+        }
+        Update: {
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          company_id?: string
+          created_count?: number
+          finished_at?: string | null
+          id?: string
+          postings_seen?: number
+          reason?: string | null
+          relisted_count?: number
+          reported_total?: number | null
+          source_id?: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["lead_scan_status"]
+          unavailable_count?: number
+          updated_count?: number
+          user_id?: string
+          watch_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_scans_source_owner_fkey"
+            columns: ["user_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sources"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
+      lead_sources: {
+        Row: {
+          board_identifier: string
+          board_key: string | null
+          board_url: string
+          company_id: string
+          created_at: string
+          id: string
+          last_complete_scan_at: string | null
+          last_scan_status:
+            | Database["public"]["Enums"]["lead_scan_status"]
+            | null
+          last_scanned_at: string | null
+          provider: Database["public"]["Enums"]["ats_provider"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          board_identifier: string
+          board_key?: string | null
+          board_url: string
+          company_id: string
+          created_at?: string
+          id?: string
+          last_complete_scan_at?: string | null
+          last_scan_status?:
+            | Database["public"]["Enums"]["lead_scan_status"]
+            | null
+          last_scanned_at?: string | null
+          provider: Database["public"]["Enums"]["ats_provider"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          board_identifier?: string
+          board_key?: string | null
+          board_url?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          last_complete_scan_at?: string | null
+          last_scan_status?:
+            | Database["public"]["Enums"]["lead_scan_status"]
+            | null
+          last_scanned_at?: string | null
+          provider?: Database["public"]["Enums"]["ats_provider"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_sources_company_owner_fkey"
+            columns: ["user_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          application_id: string | null
+          availability: Database["public"]["Enums"]["lead_availability"]
+          company_id: string
+          created_at: string
+          description: string | null
+          first_seen_at: string
+          id: string
+          job_url: string
+          last_scan_id: string
+          last_seen_at: string
+          location: string | null
+          posted_on: string | null
+          provider_posting_id: string
+          review_status: Database["public"]["Enums"]["lead_review_status"]
+          reviewed_at: string | null
+          source_id: string
+          title: string
+          unavailable_at: string | null
+          updated_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          application_id?: string | null
+          availability?: Database["public"]["Enums"]["lead_availability"]
+          company_id: string
+          created_at?: string
+          description?: string | null
+          first_seen_at: string
+          id?: string
+          job_url: string
+          last_scan_id: string
+          last_seen_at: string
+          location?: string | null
+          posted_on?: string | null
+          provider_posting_id: string
+          review_status?: Database["public"]["Enums"]["lead_review_status"]
+          reviewed_at?: string | null
+          source_id: string
+          title: string
+          unavailable_at?: string | null
+          updated_at?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          application_id?: string | null
+          availability?: Database["public"]["Enums"]["lead_availability"]
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          first_seen_at?: string
+          id?: string
+          job_url?: string
+          last_scan_id?: string
+          last_seen_at?: string
+          location?: string | null
+          posted_on?: string | null
+          provider_posting_id?: string
+          review_status?: Database["public"]["Enums"]["lead_review_status"]
+          reviewed_at?: string | null
+          source_id?: string
+          title?: string
+          unavailable_at?: string | null
+          updated_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_application_owner_fkey"
+            columns: ["user_id", "application_id"]
+            isOneToOne: false
+            referencedRelation: "application_overview"
+            referencedColumns: ["user_id", "application_id"]
+          },
+          {
+            foreignKeyName: "leads_application_owner_fkey"
+            columns: ["user_id", "application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "leads_company_owner_fkey"
+            columns: ["user_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "leads_source_owner_fkey"
+            columns: ["user_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sources"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
       mutation_requests: {
         Row: {
           created_at: string
@@ -555,6 +831,61 @@ export type Database = {
           },
         ]
       }
+      lead_overview: {
+        Row: {
+          application_id: string | null
+          availability: Database["public"]["Enums"]["lead_availability"] | null
+          board_identifier: string | null
+          company_id: string | null
+          company_name: string | null
+          first_seen_at: string | null
+          job_url: string | null
+          last_seen_at: string | null
+          lead_id: string | null
+          location: string | null
+          posted_on: string | null
+          provider: Database["public"]["Enums"]["ats_provider"] | null
+          provider_posting_id: string | null
+          review_status:
+            | Database["public"]["Enums"]["lead_review_status"]
+            | null
+          source_id: string | null
+          title: string | null
+          unavailable_at: string | null
+          user_id: string | null
+          version: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_application_owner_fkey"
+            columns: ["user_id", "application_id"]
+            isOneToOne: false
+            referencedRelation: "application_overview"
+            referencedColumns: ["user_id", "application_id"]
+          },
+          {
+            foreignKeyName: "leads_application_owner_fkey"
+            columns: ["user_id", "application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "leads_company_owner_fkey"
+            columns: ["user_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "leads_source_owner_fkey"
+            columns: ["user_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sources"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
     }
     Functions: {
       add_application_note: {
@@ -567,7 +898,21 @@ export type Database = {
         }
         Returns: Json
       }
+      begin_lead_scan: {
+        Args: { p_actor: string; p_command: Json; p_owner_id: string }
+        Returns: Json
+      }
       create_application: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+          p_today?: string
+        }
+        Returns: Json
+      }
+      create_application_from_lead: {
         Args: {
           p_actor: string
           p_command: Json
@@ -586,6 +931,15 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_application: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       delete_company_watch: {
         Args: {
           p_actor: string
@@ -593,6 +947,10 @@ export type Database = {
           p_owner_id: string
           p_request_id: string
         }
+        Returns: Json
+      }
+      finish_lead_scan: {
+        Args: { p_command: Json; p_owner_id: string }
         Returns: Json
       }
       import_applications: {
@@ -604,11 +962,24 @@ export type Database = {
         }
         Returns: Json
       }
+      record_lead_postings: {
+        Args: { p_command: Json; p_owner_id: string }
+        Returns: Json
+      }
       save_candidate_profile: {
         Args: { p_command: Json; p_owner_id: string }
         Returns: Json
       }
       set_company_watch_active: {
+        Args: {
+          p_actor: string
+          p_command: Json
+          p_owner_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      set_lead_review_status: {
         Args: {
           p_actor: string
           p_command: Json
@@ -679,6 +1050,10 @@ export type Database = {
         | "REJECTED"
         | "WITHDRAWN"
       ats_provider: "GREENHOUSE" | "LEVER" | "ASHBY" | "WORKDAY" | "OTHER"
+      lead_availability: "AVAILABLE" | "UNAVAILABLE"
+      lead_event_type: "LEAD_DISMISSED" | "LEAD_RESTORED" | "LEAD_PROMOTED"
+      lead_review_status: "NEW" | "DISMISSED" | "PROMOTED"
+      lead_scan_status: "RUNNING" | "COMPLETE" | "PARTIAL" | "FAILED"
       watch_event_type:
         | "WATCH_CREATED"
         | "WATCH_UPDATED"
@@ -836,6 +1211,10 @@ export const Constants = {
         "WITHDRAWN",
       ],
       ats_provider: ["GREENHOUSE", "LEVER", "ASHBY", "WORKDAY", "OTHER"],
+      lead_availability: ["AVAILABLE", "UNAVAILABLE"],
+      lead_event_type: ["LEAD_DISMISSED", "LEAD_RESTORED", "LEAD_PROMOTED"],
+      lead_review_status: ["NEW", "DISMISSED", "PROMOTED"],
+      lead_scan_status: ["RUNNING", "COMPLETE", "PARTIAL", "FAILED"],
       watch_event_type: [
         "WATCH_CREATED",
         "WATCH_UPDATED",

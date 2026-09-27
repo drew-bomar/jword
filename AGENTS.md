@@ -131,7 +131,9 @@ When updating jword through the `jword` MCP server:
    `update_watched_company` with `boards` replaces the whole set. Workday boards (decision 022)
    are never guessed: when the user gives a board or posting link, pass it in
    `discover_company_boards` `boardUrls` and use the returned `boardIdentifier`
-   (`account/cluster/site`); never build one by hand. No tool fetches or stores job postings.
+   (`account/cluster/site`); never build one by hand. No MCP tool fetches or stores job postings;
+   job collection and the Leads inbox (decision 024) are web-only for now. No MCP tool deletes
+   applications (decision 025); deletion is a confirmed web action.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

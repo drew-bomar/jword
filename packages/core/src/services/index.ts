@@ -27,8 +27,11 @@ import {
 import type { Logger } from "../logging";
 import { silentLogger } from "../logging";
 import { createWatchlistServices } from "./watchlist";
+import { createLeadServices } from "./leads";
+import type { JobCollector } from "../collection/types";
 import type { BoardDirectory } from "../discovery/types";
 import type {
+  LeadsRepository,
   MutationContext,
   TrackerRepository,
   WatchlistRepository,
@@ -44,6 +47,7 @@ import {
   pipelineSummarySchema,
   SEARCH_DEFAULT_LIMIT,
   searchApplicationsSchema,
+  deleteApplicationSchema,
   updateApplicationDetailsSchema,
   updateApplicationNoteSchema,
   updateApplicationStatusSchema,
@@ -51,9 +55,11 @@ import {
 } from "../validation/schemas";
 
 export interface ServiceDependencies {
-  repository: TrackerRepository & WatchlistRepository;
+  repository: TrackerRepository & WatchlistRepository & LeadsRepository;
   /** Public job-board lookups for watchlist discovery (decision 019). */
   boardDirectory?: BoardDirectory;
+  /** Reads every posting on a watched board for job collection (decision 024). */
+  jobCollector?: JobCollector;
   clock: Clock;
   logger?: Logger;
 }
@@ -178,6 +184,7 @@ export function createTrackerServices(deps: ServiceDependencies) {
   return {
     // Company watchlist (decision 018): same repository, same entry points.
     ...createWatchlistServices({ repository, logger, boardDirectory: deps.boardDirectory }),
+    ...createLeadServices({ repository, logger, clock, jobCollector: deps.jobCollector }),
 
     // ----------------------------------------------------------------- reads
     async searchApplications(
@@ -321,6 +328,21 @@ export function createTrackerServices(deps: ServiceDependencies) {
       );
     },
 
+    /**
+     * Permanently delete one application after explicit confirmation (decision 025). Web only;
+     * no MCP tool exposes this. A retry with the same request id returns the original result.
+     */
+    async deleteApplication(input: unknown, actor: ActorContext): Promise<MutationResult> {
+      const command = parseOrThrow(deleteApplicationSchema, input);
+      return run(
+        "delete_application",
+        actor,
+        { requestId: command.requestId },
+        () => repository.deleteApplication({ actor, today: null }, command),
+        mutationMeta,
+      );
+    },
+
     async updateApplicationDetails(input: unknown, actor: ActorContext): Promise<MutationResult> {
       const command = parseOrThrow(updateApplicationDetailsSchema, input);
       return run(
@@ -416,3 +438,4 @@ export function createTrackerServices(deps: ServiceDependencies) {
 export type TrackerServices = ReturnType<typeof createTrackerServices>;
 
 export * from "./watchlist";
+export * from "./leads";

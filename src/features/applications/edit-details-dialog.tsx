@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { PencilIcon } from "lucide-react";
 import type { ApplicationDetail } from "@jword/core/browser";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ApplicationForm } from "./application-form";
+import { DeleteApplication } from "./delete-application";
 
 export function EditDetailsDialog({ application }: { application: ApplicationDetail }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const busy = editBusy || deleteBusy;
+  // Reopening before the refreshed application arrives would show the pre-save values.
+  const [refreshing, startRefresh] = useTransition();
   return (
     <Dialog
       open={open}
@@ -27,7 +32,7 @@ export function EditDetailsDialog({ application }: { application: ApplicationDet
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" disabled={refreshing}>
           <PencilIcon data-icon="inline-start" aria-hidden />
           Edit details
         </Button>
@@ -40,23 +45,30 @@ export function EditDetailsDialog({ application }: { application: ApplicationDet
           </DialogDescription>
         </DialogHeader>
         {open ? (
-          <ApplicationForm
-            key={application.applicationId}
-            onBusyChange={setBusy}
-            mode={{
-              kind: "edit",
-              application,
-              onSaved: () => {
-                setBusy(false);
-                setOpen(false);
-                router.refresh();
-              },
-              onCancel: () => {
-                setBusy(false);
-                setOpen(false);
-              },
-            }}
-          />
+          <>
+            <fieldset disabled={deleteBusy} className="contents">
+              <ApplicationForm
+                key={application.applicationId}
+                onBusyChange={setEditBusy}
+                mode={{
+                  kind: "edit",
+                  application,
+                  onSaved: () => {
+                    setEditBusy(false);
+                    setOpen(false);
+                    startRefresh(() => router.refresh());
+                  },
+                  onCancel: () => {
+                    setEditBusy(false);
+                    setOpen(false);
+                  },
+                }}
+              />
+            </fieldset>
+            <fieldset disabled={editBusy} className="contents">
+              <DeleteApplication application={application} onBusyChange={setDeleteBusy} />
+            </fieldset>
+          </>
         ) : null}
       </DialogContent>
     </Dialog>
