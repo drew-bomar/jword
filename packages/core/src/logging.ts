@@ -11,6 +11,12 @@ export interface LogEvent {
   watchId?: string;
   noop?: boolean;
   replayed?: boolean;
+  leadId?: string;
+  /** Job checks: counts only, never posting content. */
+  boards?: number;
+  created?: number;
+  markedUnavailable?: number;
+  incompleteBoards?: number;
 }
 
 export interface Logger {

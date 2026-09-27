@@ -14,6 +14,8 @@ import { requirePageSession } from "@/server/auth/session";
 import { servicesFor } from "@/server/services";
 
 export const metadata: Metadata = { title: "Watchlist" };
+// A row's "Check jobs" runs as a Server Action on this page and can take a while.
+export const maxDuration = 300;
 
 function parseFilters(params: Record<string, string | string[] | undefined>): WatchFilters {
   const one = (key: string) => (Array.isArray(params[key]) ? params[key]?.[0] : params[key]) ?? "";

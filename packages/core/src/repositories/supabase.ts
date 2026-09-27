@@ -20,6 +20,7 @@ import type {
   CandidateProfileCommand,
   CommitImportCommand,
   CreateApplicationCommand,
+  DeleteApplicationCommand,
   UpdateApplicationDetailsCommand,
   UpdateApplicationNoteCommand,
   UpdateApplicationStatusCommand,
@@ -41,9 +42,31 @@ import type {
   WatchListQuery,
   WatchMutationResult,
 } from "../watchlist/types";
+import type { CollectedPosting } from "../collection/types";
+import type {
+  CreateApplicationFromLeadCommand,
+  SetLeadReviewStatusCommand,
+} from "../leads/schemas";
+import type {
+  Lead,
+  LeadCompany,
+  LeadDetail,
+  LeadListQuery,
+  LeadMutationResult,
+  LeadPostingCounts,
+  LeadReviewStatus,
+  LeadScanStart,
+} from "../leads/types";
+import type { SupportedBoardProvider } from "../watchlist/boards";
 import { decodeCursor, encodeCursor, filterKeyFor } from "./cursor";
 import { mapDatabaseError } from "./errors";
-import type { MutationContext, PageRequest, TrackerRepository, WatchlistRepository } from "./types";
+import type {
+  LeadsRepository,
+  MutationContext,
+  PageRequest,
+  TrackerRepository,
+  WatchlistRepository,
+} from "./types";
 
 export type JwordSupabaseClient = SupabaseClient<Database>;
 
@@ -53,6 +76,10 @@ type ActivityRow = Database["public"]["Tables"]["application_activities"]["Row"]
 type ProfileRow = Database["public"]["Tables"]["candidate_profiles"]["Row"];
 type WatchRow = Database["public"]["Views"]["company_watch_overview"]["Row"];
 type WatchActivityRow = Database["public"]["Tables"]["company_watch_activities"]["Row"];
+type LeadRow = Database["public"]["Views"]["lead_overview"]["Row"];
+
+/** Postings per record_lead_postings call; the SQL function accepts at most 500. */
+const POSTING_CHUNK = 250;
 
 const SORT_COLUMNS = {
   updated: "last_activity_at",
@@ -197,6 +224,57 @@ function asWatchResult(value: Json, operation: string): WatchMutationResult {
 }
 
 /** PostgREST `or()` filter values: strip characters with syntax meaning and wildcards. */
+function mapLead(row: LeadRow): Lead {
+  return {
+    leadId: row.lead_id!,
+    companyId: row.company_id!,
+    company: row.company_name!,
+    sourceId: row.source_id!,
+    provider: row.provider as SupportedBoardProvider,
+    boardIdentifier: row.board_identifier!,
+    postingId: row.provider_posting_id!,
+    title: row.title!,
+    location: row.location,
+    jobUrl: row.job_url!,
+    postedOn: row.posted_on,
+    firstSeenAt: row.first_seen_at!,
+    lastSeenAt: row.last_seen_at!,
+    availability: row.availability!,
+    unavailableAt: row.unavailable_at,
+    reviewStatus: row.review_status!,
+    applicationId: row.application_id,
+    version: row.version!,
+  };
+}
+
+function asLeadResult(value: Json, operation: string): LeadMutationResult {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    (value as Record<string, unknown>).ok !== true
+  ) {
+    throw new JwordError("INTERNAL_ERROR", `${operation} returned an unexpected result.`);
+  }
+  const raw = value as Record<string, unknown>;
+  return {
+    ok: true,
+    operation: String(raw.operation ?? operation),
+    requestId: String(raw.requestId ?? ""),
+    replayed: raw.replayed === true,
+    noop: raw.noop === true,
+    leadId: String(raw.leadId),
+    version: Number(raw.version),
+    reviewStatus: raw.reviewStatus as LeadReviewStatus,
+    applicationId: typeof raw.applicationId === "string" ? raw.applicationId : null,
+    activityId: typeof raw.activityId === "string" ? raw.activityId : null,
+    summary: String(raw.summary ?? ""),
+    ...(raw.application
+      ? { application: asMutationResult(raw.application as Json, operation) }
+      : {}),
+  };
+}
+
 function sanitizeSearchText(text: string): string {
   return text.replace(/[%_,()"'\\]/g, " ").trim();
 }
@@ -228,6 +306,10 @@ function asMutationResult(value: Json, operation: string): MutationResult {
     before: (raw.before as Record<string, string | null>) ?? {},
     after: (raw.after as Record<string, string | null>) ?? {},
     imported: typeof raw.imported === "number" ? raw.imported : undefined,
+    ...(raw.deleted === true ? { deleted: true } : {}),
+    ...(Array.isArray(raw.restoredLeadIds)
+      ? { restoredLeadIds: raw.restoredLeadIds as string[] }
+      : {}),
     applicationIds: Array.isArray(raw.applicationIds)
       ? (raw.applicationIds as string[])
       : undefined,
@@ -239,7 +321,9 @@ function asMutationResult(value: Json, operation: string): MutationResult {
  * (web; RLS applies) or the local service-role client (MCP; RLS bypassed, so every query
  * filters by user_id and every RPC passes the owner explicitly).
  */
-export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRepository {
+export class SupabaseTrackerRepository
+  implements TrackerRepository, WatchlistRepository, LeadsRepository
+{
   constructor(private readonly client: JwordSupabaseClient) {}
 
   async searchApplications(
@@ -393,7 +477,8 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
       | "update_application_status"
       | "update_application_details"
       | "add_application_note"
-      | "update_application_note",
+      | "update_application_note"
+      | "delete_application",
     ctx: MutationContext,
     requestId: string,
     command: Record<string, unknown>,
@@ -415,6 +500,14 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
   ): Promise<MutationResult> {
     const { requestId, ...rest } = command;
     return this.mutate("create_application", ctx, requestId, rest);
+  }
+
+  deleteApplication(
+    ctx: MutationContext,
+    command: DeleteApplicationCommand,
+  ): Promise<MutationResult> {
+    const { requestId, ...rest } = command;
+    return this.mutate("delete_application", { ...ctx, today: null }, requestId, rest);
   }
 
   updateApplicationStatus(
@@ -714,5 +807,161 @@ export class SupabaseTrackerRepository implements TrackerRepository, WatchlistRe
       );
       if (!data || data.length < 500) return out;
     }
+  }
+
+  // ------------------------------------------------------------------ leads
+  async beginLeadScan(
+    ctx: MutationContext,
+    board: { watchId: string; provider: SupportedBoardProvider; boardIdentifier: string },
+  ): Promise<LeadScanStart> {
+    const { data, error } = await this.client.rpc("begin_lead_scan", {
+      p_owner_id: ctx.actor.userId,
+      p_actor: ctx.actor.actorType,
+      p_command: board as unknown as Json,
+    });
+    if (error) throw mapDatabaseError(error, "begin_lead_scan");
+    const raw = data as Record<string, unknown>;
+    return { scanId: String(raw.scanId), sourceId: String(raw.sourceId) };
+  }
+
+  async recordLeadPostings(
+    ctx: MutationContext,
+    scanId: string,
+    postings: CollectedPosting[],
+  ): Promise<LeadPostingCounts> {
+    const totals: LeadPostingCounts = { created: 0, updated: 0, relisted: 0 };
+    for (let start = 0; start < postings.length; start += POSTING_CHUNK) {
+      const { data, error } = await this.client.rpc("record_lead_postings", {
+        p_owner_id: ctx.actor.userId,
+        p_command: {
+          scanId,
+          postings: postings.slice(start, start + POSTING_CHUNK),
+        } as unknown as Json,
+      });
+      if (error) throw mapDatabaseError(error, "record_lead_postings");
+      const raw = data as Record<string, number>;
+      totals.created += raw.created ?? 0;
+      totals.updated += raw.updated ?? 0;
+      totals.relisted += raw.relisted ?? 0;
+    }
+    return totals;
+  }
+
+  async finishLeadScan(
+    ctx: MutationContext,
+    scan: {
+      scanId: string;
+      status: "COMPLETE" | "PARTIAL" | "FAILED";
+      reason: string | null;
+      reportedTotal: number | null;
+    },
+  ): Promise<{ markedUnavailable: number }> {
+    const { data, error } = await this.client.rpc("finish_lead_scan", {
+      p_owner_id: ctx.actor.userId,
+      p_command: scan as unknown as Json,
+    });
+    if (error) throw mapDatabaseError(error, "finish_lead_scan");
+    return { markedUnavailable: Number((data as Record<string, unknown>).markedUnavailable ?? 0) };
+  }
+
+  async listLeads(userId: string, query: LeadListQuery): Promise<Page<Lead>> {
+    const { cursor, limit, ...filters } = query;
+    const filterKey = filterKeyFor({ ...filters, userId, leads: true });
+    const offset = decodeCursor(cursor, filterKey);
+    let request = this.client.from("lead_overview").select("*").eq("user_id", userId);
+    const text = query.text ? sanitizeSearchText(query.text) : "";
+    if (text)
+      request = request.or(
+        `title.ilike.%${text}%,company_name.ilike.%${text}%,location.ilike.%${text}%`,
+      );
+    if (query.companyId) request = request.eq("company_id", query.companyId);
+    if (query.reviewStatus) request = request.eq("review_status", query.reviewStatus);
+    if (query.availability) request = request.eq("availability", query.availability);
+    const { data, error } = await request
+      .order("first_seen_at", { ascending: false })
+      .order("lead_id", { ascending: true })
+      .range(offset, offset + limit);
+    if (error) throw mapDatabaseError(error, "list leads");
+    const rows = (data ?? []) as LeadRow[];
+    const hasMore = rows.length > limit;
+    return {
+      items: rows.slice(0, limit).map(mapLead),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(offset + limit, filterKey) : null,
+    };
+  }
+
+  async getLead(userId: string, leadId: string): Promise<LeadDetail | null> {
+    const { data, error } = await this.client
+      .from("lead_overview")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("lead_id", leadId)
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "get lead");
+    if (!data) return null;
+    const detail = await this.client
+      .from("leads")
+      .select("description")
+      .eq("user_id", userId)
+      .eq("id", leadId)
+      .maybeSingle();
+    if (detail.error) throw mapDatabaseError(detail.error, "get lead description");
+    return { ...mapLead(data as LeadRow), description: detail.data?.description ?? null };
+  }
+
+  async listLeadCompanies(userId: string): Promise<LeadCompany[]> {
+    const counts = new Map<string, LeadCompany>();
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await this.client
+        .from("lead_overview")
+        .select("company_id, company_name")
+        .eq("user_id", userId)
+        .order("lead_id")
+        .range(offset, offset + 999);
+      if (error) throw mapDatabaseError(error, "lead companies");
+      for (const row of data ?? []) {
+        const entry = counts.get(row.company_id!) ?? {
+          companyId: row.company_id!,
+          company: row.company_name!,
+          leadCount: 0,
+        };
+        entry.leadCount += 1;
+        counts.set(entry.companyId, entry);
+      }
+      if (!data || data.length < 1000) break;
+    }
+    return [...counts.values()].sort((a, b) => a.company.localeCompare(b.company));
+  }
+
+  async setLeadReviewStatus(
+    ctx: MutationContext,
+    command: SetLeadReviewStatusCommand,
+  ): Promise<LeadMutationResult> {
+    const { requestId, ...rest } = command;
+    const { data, error } = await this.client.rpc("set_lead_review_status", {
+      p_owner_id: ctx.actor.userId,
+      p_actor: ctx.actor.actorType,
+      p_request_id: requestId,
+      p_command: stripUndefined(rest) as Json,
+    });
+    if (error) throw mapDatabaseError(error, "set_lead_review_status", true);
+    return asLeadResult(data, "set_lead_review_status");
+  }
+
+  async createApplicationFromLead(
+    ctx: MutationContext,
+    command: CreateApplicationFromLeadCommand,
+  ): Promise<LeadMutationResult> {
+    const { requestId, ...rest } = command;
+    const { data, error } = await this.client.rpc("create_application_from_lead", {
+      p_owner_id: ctx.actor.userId,
+      p_actor: ctx.actor.actorType,
+      p_request_id: requestId,
+      p_command: stripUndefined(rest) as Json,
+      ...(ctx.today ? { p_today: ctx.today } : {}),
+    });
+    if (error) throw mapDatabaseError(error, "create_application_from_lead", true);
+    return asLeadResult(data, "create_application_from_lead");
   }
 }

@@ -68,3 +68,16 @@ export async function updateNoteAction(input: unknown): Promise<ActionResult<Mut
     return safeMutationResult(result);
   });
 }
+
+/** Permanently delete an application after confirmation (decision 025). */
+export async function deleteApplicationAction(
+  input: unknown,
+): Promise<ActionResult<MutationResult>> {
+  return runAction(async () => {
+    const session = await requireSession();
+    const result = await servicesFor(session).deleteApplication(input, session.actor);
+    revalidateApplication(result.applicationId);
+    if (result.restoredLeadIds?.length) revalidatePath("/leads");
+    return safeMutationResult(result);
+  });
+}

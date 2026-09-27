@@ -15,7 +15,27 @@ import type {
 } from "../domain/types";
 import { findDuplicateCandidates, type DuplicateIndexEntry } from "../import/validate";
 import { decodeCursor, encodeCursor, filterKeyFor } from "../repositories/cursor";
+import type { CollectedPosting } from "../collection/types";
 import type {
+  CreateApplicationFromLeadCommand,
+  SetLeadReviewStatusCommand,
+} from "../leads/schemas";
+import type {
+  Lead,
+  LeadActivity,
+  LeadAvailability,
+  LeadCompany,
+  LeadDetail,
+  LeadListQuery,
+  LeadMutationResult,
+  LeadPostingCounts,
+  LeadReviewStatus,
+  LeadScanStart,
+} from "../leads/types";
+import { providerLabel } from "../leads/labels";
+import type { SupportedBoardProvider } from "../watchlist/boards";
+import type {
+  LeadsRepository,
   MutationContext,
   PageRequest,
   TrackerRepository,
@@ -26,6 +46,7 @@ import type {
   CandidateProfileCommand,
   CommitImportCommand,
   CreateApplicationCommand,
+  DeleteApplicationCommand,
   ImportRowCommand,
   UpdateApplicationDetailsCommand,
   UpdateApplicationNoteCommand,
@@ -78,6 +99,58 @@ interface WatchActivityRecord extends WatchActivity {
   userId: string;
 }
 
+interface LeadSourceRecord {
+  id: string;
+  userId: string;
+  companyId: string;
+  provider: SupportedBoardProvider;
+  boardIdentifier: string;
+  boardUrl: string;
+  lastScanStatus: ScanStatus | null;
+  lastCompleteScanAt: string | null;
+}
+
+type ScanStatus = "RUNNING" | "COMPLETE" | "PARTIAL" | "FAILED";
+
+interface LeadScanRecord {
+  id: string;
+  userId: string;
+  sourceId: string;
+  watchId: string;
+  status: ScanStatus;
+  reason: string | null;
+  startedAt: string;
+  startedMs: number;
+  finishedAt: string | null;
+}
+
+interface LeadRecord {
+  id: string;
+  userId: string;
+  sourceId: string;
+  companyId: string;
+  postingId: string;
+  title: string;
+  location: string | null;
+  jobUrl: string;
+  description: string | null;
+  postedOn: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  availability: LeadAvailability;
+  unavailableAt: string | null;
+  reviewStatus: LeadReviewStatus;
+  applicationId: string | null;
+  version: number;
+}
+
+interface LeadActivityRecord extends LeadActivity {
+  userId: string;
+}
+
+/** Mirrors jword.scan_stale_after(). */
+const SCAN_STALE_MS = 5 * 60_000;
+
 interface JobRecord {
   id: string;
   userId: string;
@@ -121,7 +194,7 @@ interface ActivityRecord extends ApplicationActivity {
 interface Receipt {
   operation: string;
   fingerprint: string;
-  result: MutationResult | WatchMutationResult;
+  result: MutationResult | WatchMutationResult | LeadMutationResult;
 }
 
 const PRIORITY_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
@@ -131,7 +204,9 @@ const PRIORITY_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
  * receipts, duplicate candidates, no-ops, atomic activity). Used by unit tests and the
  * scripted MCP scenarios so business behavior can be exercised without a database.
  */
-export class FakeTrackerRepository implements TrackerRepository, WatchlistRepository {
+export class FakeTrackerRepository
+  implements TrackerRepository, WatchlistRepository, LeadsRepository
+{
   companies: CompanyRecord[] = [];
   jobs: JobRecord[] = [];
   applications: ApplicationRecord[] = [];
@@ -141,6 +216,10 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
   profiles = new Map<string, CandidateProfile>();
   watches: WatchRecord[] = [];
   watchActivities: WatchActivityRecord[] = [];
+  leadSources: LeadSourceRecord[] = [];
+  leadScans: LeadScanRecord[] = [];
+  leads: LeadRecord[] = [];
+  leadActivities: LeadActivityRecord[] = [];
   /** Test hook: throw inside the "transaction" after the primary write to prove rollback. */
   failBeforeActivity = false;
   private clockMs = Date.parse("2026-09-21T15:00:00Z");
@@ -424,6 +503,10 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
       activities: structuredClone(this.activities),
       watches: structuredClone(this.watches),
       watchActivities: structuredClone(this.watchActivities),
+      leadSources: structuredClone(this.leadSources),
+      leadScans: structuredClone(this.leadScans),
+      leads: structuredClone(this.leads),
+      leadActivities: structuredClone(this.leadActivities),
       receipts: new Map(this.receipts),
     };
     try {
@@ -584,6 +667,62 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
           dateFound: app.dateFound,
           appliedAt: app.appliedAt,
         },
+      });
+    });
+  }
+
+  /** Mirrors public.delete_application(): notes and history go with it; the company stays. */
+  async deleteApplication(
+    ctx: MutationContext,
+    command: DeleteApplicationCommand,
+  ): Promise<MutationResult> {
+    const op = "delete_application";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const app = this.lockApplication(userId, command.applicationId, command.expectedVersion);
+      const job = this.jobs.find((j) => j.userId === userId && j.id === app.jobId)!;
+      const company = this.companies.find((c) => c.userId === userId && c.id === job.companyId)!;
+      const restoredLeadIds: string[] = [];
+      for (const lead of this.leads) {
+        if (lead.userId !== userId || lead.applicationId !== app.id) continue;
+        Object.assign(lead, {
+          reviewStatus: "NEW",
+          applicationId: null,
+          version: lead.version + 1,
+        });
+        this.addLeadActivity(
+          userId,
+          lead.id,
+          "LEAD_RESTORED",
+          ctx.actor.actorType,
+          `Returned ${lead.title} to New: its application was deleted`,
+        );
+        restoredLeadIds.push(lead.id);
+      }
+      this.applications = this.applications.filter((a) => a.id !== app.id);
+      this.notes = this.notes.filter((n) => n.applicationId !== app.id);
+      this.activities = this.activities.filter((a) => a.applicationId !== app.id);
+      if (!this.applications.some((a) => a.jobId === job.id))
+        this.jobs = this.jobs.filter((j) => j.id !== job.id);
+      return this.finishRequest(ctx, command.requestId, op, fp, {
+        ok: true,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        noop: false,
+        applicationId: app.id,
+        companyId: company.id,
+        version: app.version,
+        deleted: true,
+        restoredLeadIds,
+        activityId: null,
+        summary: `Deleted application for ${job.title} at ${company.name}`,
+        changedFields: ["deleted"],
+        before: { status: app.status },
+        after: {},
       });
     });
   }
@@ -1605,6 +1744,453 @@ export class FakeTrackerRepository implements TrackerRepository, WatchlistReposi
         changedFields: ["active"],
         before,
         after: { active: command.active },
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ leads
+  /** Advance the fake clock, e.g. to make a running scan stale. */
+  advanceClock(ms: number) {
+    this.clockMs += ms;
+  }
+
+  private leadView(lead: LeadRecord): Lead {
+    const source = this.leadSources.find((s) => s.id === lead.sourceId)!;
+    const company = this.companies.find((c) => c.id === lead.companyId)!;
+    return {
+      leadId: lead.id,
+      companyId: lead.companyId,
+      company: company.name,
+      sourceId: source.id,
+      provider: source.provider,
+      boardIdentifier: source.boardIdentifier,
+      postingId: lead.postingId,
+      title: lead.title,
+      location: lead.location,
+      jobUrl: lead.jobUrl,
+      postedOn: lead.postedOn,
+      firstSeenAt: lead.firstSeenAt,
+      lastSeenAt: lead.lastSeenAt,
+      availability: lead.availability,
+      unavailableAt: lead.unavailableAt,
+      reviewStatus: lead.reviewStatus,
+      applicationId: lead.applicationId,
+      version: lead.version,
+    };
+  }
+
+  /** Mirrors public.begin_lead_scan(). */
+  async beginLeadScan(
+    ctx: MutationContext,
+    board: { watchId: string; provider: SupportedBoardProvider; boardIdentifier: string },
+  ): Promise<LeadScanStart> {
+    const userId = ctx.actor.userId;
+    const watch = this.watches.find((w) => w.userId === userId && w.id === board.watchId);
+    const configured = watch?.boards.find(
+      (b) =>
+        b.provider === board.provider &&
+        b.boardIdentifier?.toLowerCase() === board.boardIdentifier.toLowerCase(),
+    );
+    if (!watch || !configured?.boardIdentifier) {
+      throw new JwordError("NOT_FOUND", "That board is not on this watched company.", {
+        reason: "BOARD_NOT_WATCHED",
+      });
+    }
+    let source = this.leadSources.find(
+      (s) =>
+        s.userId === userId &&
+        s.provider === board.provider &&
+        s.boardIdentifier.toLowerCase() === board.boardIdentifier.toLowerCase(),
+    );
+    if (!source) {
+      source = {
+        id: randomUUID(),
+        userId,
+        companyId: watch.companyId,
+        provider: board.provider,
+        boardIdentifier: configured.boardIdentifier,
+        boardUrl: configured.boardUrl,
+        lastScanStatus: null,
+        lastCompleteScanAt: null,
+      };
+      this.leadSources.push(source);
+    } else {
+      Object.assign(source, {
+        companyId: watch.companyId,
+        boardIdentifier: configured.boardIdentifier,
+        boardUrl: configured.boardUrl,
+      });
+    }
+    const startedAt = this.now();
+    const startedMs = Date.parse(startedAt);
+    for (const scan of this.leadScans) {
+      if (scan.sourceId === source.id && scan.status === "RUNNING") {
+        if (startedMs - scan.startedMs > SCAN_STALE_MS) {
+          Object.assign(scan, { status: "FAILED", reason: "INTERRUPTED", finishedAt: startedAt });
+        } else {
+          throw new JwordError("CONFLICT", "This board is already being checked.", {
+            reason: "SCAN_IN_PROGRESS",
+          });
+        }
+      }
+    }
+    const scan: LeadScanRecord = {
+      id: randomUUID(),
+      userId,
+      sourceId: source.id,
+      watchId: watch.id,
+      status: "RUNNING",
+      reason: null,
+      startedAt,
+      startedMs,
+      finishedAt: null,
+    };
+    this.leadScans.push(scan);
+    return { scanId: scan.id, sourceId: source.id };
+  }
+
+  private runningScan(userId: string, scanId: string): LeadScanRecord {
+    const scan = this.leadScans.find((s) => s.userId === userId && s.id === scanId);
+    if (!scan) throw new JwordError("NOT_FOUND", "Scan not found.", { reason: "SCAN_NOT_FOUND" });
+    if (scan.status !== "RUNNING")
+      throw new JwordError("CONFLICT", "This scan has already finished.", {
+        reason: "SCAN_FINISHED",
+      });
+    return scan;
+  }
+
+  /** Mirrors public.record_lead_postings(). Review status and versions are never touched. */
+  async recordLeadPostings(
+    ctx: MutationContext,
+    scanId: string,
+    postings: CollectedPosting[],
+  ): Promise<LeadPostingCounts> {
+    const userId = ctx.actor.userId;
+    const scan = this.runningScan(userId, scanId);
+    const source = this.leadSources.find((s) => s.id === scan.sourceId)!;
+    const counts: LeadPostingCounts = { created: 0, updated: 0, relisted: 0 };
+    const now = this.now();
+    for (const posting of postings) {
+      const existing = this.leads.find(
+        (l) => l.userId === userId && l.sourceId === source.id && l.postingId === posting.postingId,
+      );
+      if (!existing) {
+        counts.created += 1;
+        this.leads.push({
+          id: randomUUID(),
+          userId,
+          sourceId: source.id,
+          companyId: source.companyId,
+          postingId: posting.postingId,
+          title: posting.title,
+          location: posting.location,
+          jobUrl: posting.jobUrl,
+          description: posting.description,
+          postedOn: posting.postedOn,
+          firstSeenAt: now,
+          lastSeenAt: now,
+          availability: "AVAILABLE",
+          unavailableAt: null,
+          reviewStatus: "NEW",
+          applicationId: null,
+          version: 1,
+        });
+        continue;
+      }
+      const postedOn = posting.postedOn ?? existing.postedOn;
+      if (existing.availability === "UNAVAILABLE") counts.relisted += 1;
+      else if (
+        existing.title !== posting.title ||
+        existing.location !== posting.location ||
+        existing.jobUrl !== posting.jobUrl ||
+        existing.description !== posting.description ||
+        existing.postedOn !== postedOn
+      )
+        counts.updated += 1;
+      Object.assign(existing, {
+        title: posting.title,
+        location: posting.location,
+        jobUrl: posting.jobUrl,
+        description: posting.description,
+        postedOn,
+        companyId: source.companyId,
+        lastSeenAt: now,
+        availability: "AVAILABLE",
+        unavailableAt: null,
+      });
+    }
+    return counts;
+  }
+
+  /** Mirrors public.finish_lead_scan(): only COMPLETE marks unseen postings unavailable. */
+  async finishLeadScan(
+    ctx: MutationContext,
+    scan: {
+      scanId: string;
+      status: "COMPLETE" | "PARTIAL" | "FAILED";
+      reason: string | null;
+      reportedTotal: number | null;
+    },
+  ): Promise<{ markedUnavailable: number }> {
+    const record = this.runningScan(ctx.actor.userId, scan.scanId);
+    if ((scan.status === "COMPLETE") !== (scan.reason === null))
+      throw new JwordError("VALIDATION_ERROR", "Only an incomplete scan has a reason.", {
+        reason: "INVALID_FIELD",
+      });
+    const now = this.now();
+    let markedUnavailable = 0;
+    if (scan.status === "COMPLETE") {
+      for (const lead of this.leads) {
+        if (
+          lead.userId === record.userId &&
+          lead.sourceId === record.sourceId &&
+          lead.availability === "AVAILABLE" &&
+          lead.lastSeenAt < record.startedAt
+        ) {
+          lead.availability = "UNAVAILABLE";
+          lead.unavailableAt = now;
+          markedUnavailable += 1;
+        }
+      }
+    }
+    Object.assign(record, { status: scan.status, reason: scan.reason, finishedAt: now });
+    const source = this.leadSources.find((s) => s.id === record.sourceId)!;
+    source.lastScanStatus = scan.status;
+    if (scan.status === "COMPLETE") source.lastCompleteScanAt = now;
+    return { markedUnavailable };
+  }
+
+  async listLeads(userId: string, query: LeadListQuery): Promise<Page<Lead>> {
+    const { cursor, limit, ...filters } = query;
+    const filterKey = filterKeyFor({ ...filters, userId, leads: true });
+    const offset = decodeCursor(cursor, filterKey);
+    const text = query.text?.trim().toLowerCase();
+    let rows = this.leads.filter((l) => l.userId === userId).map((l) => this.leadView(l));
+    if (text)
+      rows = rows.filter((r) =>
+        [r.title, r.company, r.location ?? ""].some((v) => v.toLowerCase().includes(text)),
+      );
+    if (query.companyId) rows = rows.filter((r) => r.companyId === query.companyId);
+    if (query.reviewStatus) rows = rows.filter((r) => r.reviewStatus === query.reviewStatus);
+    if (query.availability) rows = rows.filter((r) => r.availability === query.availability);
+    rows.sort(
+      (a, b) => b.firstSeenAt.localeCompare(a.firstSeenAt) || a.leadId.localeCompare(b.leadId),
+    );
+    const page = rows.slice(offset, offset + limit + 1);
+    const hasMore = page.length > limit;
+    return {
+      items: page.slice(0, limit),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(offset + limit, filterKey) : null,
+    };
+  }
+
+  async getLead(userId: string, leadId: string): Promise<LeadDetail | null> {
+    const lead = this.leads.find((l) => l.userId === userId && l.id === leadId);
+    return lead ? { ...this.leadView(lead), description: lead.description } : null;
+  }
+
+  async listLeadCompanies(userId: string): Promise<LeadCompany[]> {
+    const counts = new Map<string, LeadCompany>();
+    for (const lead of this.leads.filter((l) => l.userId === userId)) {
+      const company = this.companies.find((c) => c.id === lead.companyId)!;
+      const entry = counts.get(company.id) ?? {
+        companyId: company.id,
+        company: company.name,
+        leadCount: 0,
+      };
+      entry.leadCount += 1;
+      counts.set(company.id, entry);
+    }
+    return [...counts.values()].sort((a, b) => a.company.localeCompare(b.company));
+  }
+
+  private lockLead(userId: string, leadId: string, expectedVersion: number): LeadRecord {
+    const lead = this.leads.find((l) => l.userId === userId && l.id === leadId);
+    if (!lead) throw new JwordError("NOT_FOUND", "Lead not found.", { reason: "LEAD_NOT_FOUND" });
+    if (lead.version !== expectedVersion) {
+      throw new JwordError(
+        "CONFLICT",
+        "This lead changed since you opened it. Refresh before saving.",
+        {
+          reason: "STALE_VERSION",
+          currentVersion: lead.version,
+          expectedVersion,
+        },
+      );
+    }
+    if (lead.reviewStatus === "PROMOTED") {
+      throw new JwordError("CONFLICT", "An application was already created from this lead.", {
+        reason: "LEAD_PROMOTED",
+      });
+    }
+    return lead;
+  }
+
+  private beginLeadRequest(
+    ctx: MutationContext,
+    requestId: string,
+    operation: string,
+    fp: string,
+  ): LeadMutationResult | null {
+    const receipt = this.receipts.get(`${ctx.actor.userId}:${requestId}`);
+    if (!receipt) return null;
+    if (receipt.operation !== operation || receipt.fingerprint !== fp) {
+      throw new JwordError(
+        "CONFLICT",
+        "This request id was already used for a different command.",
+        {
+          reason: "REQUEST_ID_REUSED",
+        },
+      );
+    }
+    return { ...(receipt.result as LeadMutationResult), replayed: true };
+  }
+
+  private finishLeadRequest(
+    ctx: MutationContext,
+    requestId: string,
+    operation: string,
+    fp: string,
+    result: LeadMutationResult,
+  ): LeadMutationResult {
+    this.receipts.set(`${ctx.actor.userId}:${requestId}`, { operation, fingerprint: fp, result });
+    return { ...result, replayed: false };
+  }
+
+  private addLeadActivity(
+    userId: string,
+    leadId: string,
+    type: LeadActivity["type"],
+    actorType: LeadActivity["actorType"],
+    summary: string,
+  ): LeadActivityRecord {
+    const activity: LeadActivityRecord = {
+      activityId: randomUUID(),
+      userId,
+      leadId,
+      type,
+      actorType,
+      summary,
+      occurredAt: this.now(),
+    };
+    this.leadActivities.push(activity);
+    return activity;
+  }
+
+  /** Mirrors public.set_lead_review_status(). */
+  async setLeadReviewStatus(
+    ctx: MutationContext,
+    command: SetLeadReviewStatusCommand,
+  ): Promise<LeadMutationResult> {
+    const op = "set_lead_review_status";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginLeadRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const lead = this.lockLead(userId, command.leadId, command.expectedVersion);
+      const noop = lead.reviewStatus === command.reviewStatus;
+      let summary = `${lead.title} is already ${command.reviewStatus.toLowerCase()}`;
+      let activityId: string | null = null;
+      if (!noop) {
+        lead.reviewStatus = command.reviewStatus;
+        lead.version += 1;
+        summary = `${command.reviewStatus === "DISMISSED" ? "Dismissed" : "Restored"} ${lead.title}`;
+        activityId = this.addLeadActivity(
+          userId,
+          lead.id,
+          command.reviewStatus === "DISMISSED" ? "LEAD_DISMISSED" : "LEAD_RESTORED",
+          ctx.actor.actorType,
+          summary,
+        ).activityId;
+      }
+      return this.finishLeadRequest(ctx, command.requestId, op, fp, {
+        ok: true,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        noop,
+        leadId: lead.id,
+        version: lead.version,
+        reviewStatus: command.reviewStatus,
+        applicationId: null,
+        activityId,
+        summary,
+      });
+    });
+  }
+
+  /** Mirrors public.create_application_from_lead(). */
+  async createApplicationFromLead(
+    ctx: MutationContext,
+    command: CreateApplicationFromLeadCommand,
+  ): Promise<LeadMutationResult> {
+    const op = "create_application_from_lead";
+    const fp = this.fingerprint(op, ctx, command);
+    const existing = this.beginLeadRequest(ctx, command.requestId, op, fp);
+    if (existing) return existing;
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const lead = this.lockLead(userId, command.leadId, command.expectedVersion);
+      const source = this.leadSources.find((s) => s.id === lead.sourceId)!;
+      const company = this.companies.find((c) => c.id === lead.companyId)!;
+      const { app, job, activity } = this.createTracked(
+        ctx,
+        {
+          company: company.name,
+          companyId: company.id,
+          title: lead.title.slice(0, 200),
+          jobUrl: lead.jobUrl,
+          externalJobId: lead.postingId.length <= 100 ? lead.postingId : null,
+          location: lead.location?.slice(0, 200) ?? null,
+          description: lead.description,
+          datePosted: lead.postedOn,
+          source: providerLabel(source.provider),
+          allowDuplicate: command.allowDuplicate ?? false,
+        },
+        "CREATED",
+        { leadId: lead.id },
+      );
+      lead.reviewStatus = "PROMOTED";
+      lead.applicationId = app.id;
+      lead.version += 1;
+      const summary = `Created application for ${lead.title} at ${company.name}`;
+      const leadActivity = this.addLeadActivity(
+        userId,
+        lead.id,
+        "LEAD_PROMOTED",
+        ctx.actor.actorType,
+        summary,
+      );
+      return this.finishLeadRequest(ctx, command.requestId, op, fp, {
+        ok: true,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        noop: false,
+        leadId: lead.id,
+        version: lead.version,
+        reviewStatus: "PROMOTED",
+        applicationId: app.id,
+        activityId: leadActivity.activityId,
+        summary,
+        application: {
+          ok: true,
+          operation: "create_application",
+          requestId: command.requestId,
+          replayed: false,
+          noop: false,
+          applicationId: app.id,
+          jobId: job.id,
+          companyId: company.id,
+          activityId: activity.activityId,
+          version: 1,
+          summary: `Created ${app.status} application at ${company.name}`,
+          changedFields: ["status", "dateFound"],
+          before: {},
+          after: { status: app.status, dateFound: app.dateFound },
+        },
       });
     });
   }

@@ -16,6 +16,7 @@ import type {
   CandidateProfileCommand,
   CommitImportCommand,
   CreateApplicationCommand,
+  DeleteApplicationCommand,
   UpdateApplicationDetailsCommand,
   UpdateApplicationNoteCommand,
   UpdateApplicationStatusCommand,
@@ -35,6 +36,22 @@ import type {
   WatchListQuery,
   WatchMutationResult,
 } from "../watchlist/types";
+
+import type {
+  CreateApplicationFromLeadCommand,
+  SetLeadReviewStatusCommand,
+} from "../leads/schemas";
+import type {
+  Lead,
+  LeadCompany,
+  LeadDetail,
+  LeadListQuery,
+  LeadMutationResult,
+  LeadPostingCounts,
+  LeadScanStart,
+} from "../leads/types";
+import type { CollectedPosting } from "../collection/types";
+import type { SupportedBoardProvider } from "../watchlist/boards";
 
 export interface MutationContext {
   actor: ActorContext;
@@ -91,6 +108,10 @@ export interface TrackerRepository {
     command: UpdateApplicationNoteCommand,
   ): Promise<MutationResult>;
   importApplications(ctx: MutationContext, command: CommitImportCommand): Promise<MutationResult>;
+  deleteApplication(
+    ctx: MutationContext,
+    command: DeleteApplicationCommand,
+  ): Promise<MutationResult>;
 
   getCandidateProfile(userId: string): Promise<CandidateProfile | null>;
   saveCandidateProfile(userId: string, command: CandidateProfileCommand): Promise<CandidateProfile>;
@@ -135,4 +156,42 @@ export interface WatchlistRepository {
     userId: string,
   ): Promise<Array<{ companyId: string; company: string; jobUrl: string }>>;
   listWatchSummaries(userId: string): Promise<WatchSummary[]>;
+}
+
+/**
+ * Leads repository contract (decision 024). Scans are written in three steps so large boards
+ * can be saved in chunks; only finishing a COMPLETE scan marks unseen postings unavailable.
+ */
+export interface LeadsRepository {
+  beginLeadScan(
+    ctx: MutationContext,
+    board: { watchId: string; provider: SupportedBoardProvider; boardIdentifier: string },
+  ): Promise<LeadScanStart>;
+  recordLeadPostings(
+    ctx: MutationContext,
+    scanId: string,
+    postings: CollectedPosting[],
+  ): Promise<LeadPostingCounts>;
+  finishLeadScan(
+    ctx: MutationContext,
+    scan: {
+      scanId: string;
+      status: "COMPLETE" | "PARTIAL" | "FAILED";
+      reason: string | null;
+      reportedTotal: number | null;
+    },
+  ): Promise<{ markedUnavailable: number }>;
+
+  listLeads(userId: string, query: LeadListQuery): Promise<Page<Lead>>;
+  getLead(userId: string, leadId: string): Promise<LeadDetail | null>;
+  listLeadCompanies(userId: string): Promise<LeadCompany[]>;
+
+  setLeadReviewStatus(
+    ctx: MutationContext,
+    command: SetLeadReviewStatusCommand,
+  ): Promise<LeadMutationResult>;
+  createApplicationFromLead(
+    ctx: MutationContext,
+    command: CreateApplicationFromLeadCommand,
+  ): Promise<LeadMutationResult>;
 }

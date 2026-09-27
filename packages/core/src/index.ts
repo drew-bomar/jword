@@ -10,4 +10,6 @@ export * from "./testing/fake-repository";
 export * from "./discovery/directory";
 export * from "./discovery/cache";
 export * from "./discovery/fixtures";
+export * from "./collection/collector";
+export * from "./collection/fixtures";
 export type { Database, Json } from "./db/database.types";

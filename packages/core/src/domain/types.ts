@@ -136,6 +136,10 @@ export interface MutationResult {
   changedFields: string[];
   before: Record<string, SafeScalar>;
   after: Record<string, SafeScalar>;
+  /** Deletion only (decision 025): the application no longer exists. */
+  deleted?: boolean;
+  /** Deletion only: leads returned to New because their application was deleted. */
+  restoredLeadIds?: string[];
   /** Import batches only. */
   imported?: number;
   applicationIds?: string[];
