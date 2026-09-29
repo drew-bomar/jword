@@ -2,6 +2,97 @@
 
 Original build: 2026-09-21 on branch `claude/mvp`. Verification below describes that build; see the reliability corrections in ARCHITECTURE.md for the 2026-09-22 follow-up. This is the engineering and learning handoff for the owner.
 
+## Codex hardening of lead filtering (2026-09-27)
+
+Branch `claude/lead-filtering`, still uncommitted. Preserved Claude's feature work. No hosted
+migration, deployment, commit, or push. `docs/CLAUDE_CATCHUP.md` is still absent.
+
+Fixed the six review findings:
+
+- No saved preferences now means no exclusions, including when the profile has a graduation
+  date. Optional/historical graduation ranges and alternative experience paths stay uncertain.
+- Re-evaluation guards the posting's separate `input_revision` and current graduation date, as
+  well as preference version. Old text cannot overwrite a newly collected classification.
+- A per-owner lock serializes preference/profile saves and evaluation writes, including the
+  first save when there is no row to lock. Concurrent first saves cannot silently overwrite.
+- Failed re-checks return `reevaluationPending` after a committed save. No-op saves and identical
+  retries repair stale labels without duplicating audit records; the form explains the retry.
+- Negated remote and contradictory onsite/remote text cannot label a role remote-only.
+- SQL validates nested evaluation JSON and its agreement with indexed labels. Reads and the
+  renderer tolerate malformed legacy data. Preference controls also lock during an unconfirmed
+  save so Retry cannot misleadingly save a different-looking draft.
+
+Runtime: Preferences form → authenticated Server Action → shared `saveSearchPreferences` →
+atomic preference RPC → evaluator → guarded `apply_lead_evaluations`. Collection uses the same
+evaluator before recording postings; SQL increments the input revision when posting fields change.
+Review versions, availability, application links, and review statuses remain separate.
+
+Files worth reading: `leads/evaluate.ts`, `services/leads.ts`, `leads/evaluation-schema.ts`,
+`preferences/preferences-form.tsx`, and migration `20260927000200_lead_filtering_hardening.sql`.
+The tradeoff is a short per-owner database lock for each settings write/evaluation batch; provider
+fetches happen outside these transactions, and derived updates never invalidate an open Dismiss.
+
+Verification: `pnpm check` passed (491 unit tests, formatting, lint, all typechecks),
+`pnpm mcp:build` passed, and `JWORD_E2E=1 pnpm build --webpack` passed with local-stack environment
+values. The new migration applied locally with `pnpm exec supabase migration up --local`.
+Integration tests are blocked by sandbox `EPERM` connecting to local Auth (`127.0.0.1:54321`);
+Playwright is blocked by `listen EPERM` on port 3100. Added database regressions include observed
+lock waits for simultaneous first saves, stale posting/profile rejection, and malformed JSON;
+browser regressions cover lost save responses and malformed legacy labels. These remain unrun.
+Live database type generation also hit the CLI's blocked telemetry write; types were updated
+from the migration contract and typechecked. In a normal terminal, rerun `pnpm db:types`,
+`pnpm test:integration`, and `pnpm test:e2e` against `.env.test.local` before deployment.
+
+Follow-up run outside the sandbox (Claude, 2026-09-27): both filtering migrations confirmed
+applied locally and byte-identical (ignoring whitespace) to the files; `pnpm db:types` output is
+identical to the hand-edited types; `pnpm check` 491, `pnpm test:integration` 80, and the full
+Playwright suite 67 passed / 33 intentional skips (production build with local-stack env). No
+fixes were needed.
+
+Manual checks after those pass: with no preferences, a profile date must not hide collected jobs;
+change preferences while another tab checks jobs; confirm review actions remain usable; retry an
+unconfirmed preference save and verify its original values plus one audit activity. No new product
+decision is needed. Both filtering migrations remain local only.
+
+## Search preferences and lead filtering (2026-09-27)
+
+[Decision 026](decisions/026-search-preferences-and-lead-filtering.md), branch
+`claude/lead-filtering` from `main` after PR #5. No Linear issue (tracking stopped after JWO-16).
+
+- **Preferences** (`/settings/preferences`, linked from Leads): target level, employment type,
+  start month, ordered cities, hide remote-only, role interests, optional posting-age limit.
+  Versioned, retry-safe, audited. Graduation date stays in the profile. Nothing is seeded: until
+  the owner saves, nothing is filtered.
+- **Evaluator** (`packages/core/src/leads/evaluate.ts`): pure; returns match
+  (eligible/uncertain/excluded), reasons and flags with the matched text, and labels
+  (arrangement, preferred city rank, role fit, start fit). Only clear title/structured-field
+  rules exclude; unknown stays eligible with a flag.
+- **Collection**: one preference snapshot per check; new excluded postings are counted by reason,
+  not stored; known postings are always refreshed. Availability is unaffected by filtering.
+  Collector now reads Ashby/Lever employment type, workplace type, and all locations.
+- **Re-evaluation** after preference save, profile save, and each check; changes evaluation
+  columns only (never review status, availability, version).
+- **Leads page**: views Recommended (default) / Remote only / Filtered out / All, sort Newest or
+  Preferred city, role filter, evaluation chips, and "skipped by preferences" in the check summary.
+
+Runtime (collection): Check for new jobs → `checkForNewJobsAction` → `checkForNewJobs` →
+snapshot (`getSearchPreferences` + profile) → per board `JobCollector.collect` →
+`evaluatePosting` per posting → `record_lead_postings` (skip new EXCLUDED, refresh known) →
+`finish_lead_scan` → re-evaluate stale leads → summary. Runtime (edit): PreferencesForm →
+`saveSearchPreferencesAction` → `saveSearchPreferences` → `save_search_preferences` → re-evaluate →
+`apply_lead_evaluations`.
+
+Verification (local stack): `pnpm check` (464 unit tests), `pnpm test:integration` (74),
+Playwright full suite 65 passed / 31 intentional skips against a `.next-e2e` build made with the
+local-stack env, `JWORD_E2E=1 next build --webpack`. Live read-only evaluation of Ramp,
+Palantir, Datadog, Stripe, Salesforce Workday, OpenAI, and Anthropic boards was used to tune the
+rules (no engineering titles wrongly excluded after tuning). One transient local statement
+timeout in `pagination.test.ts` (import) did not reproduce on rerun.
+
+**Pending hosted migration:** `20260927000100_lead_filtering.sql` (local only). Apply with
+`pnpm exec supabase db push` before deploying this branch, then save preferences once in the
+hosted app. Manual checks: [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md#search-preferences-and-lead-filtering-decision-026).
+
 ## Codex review of Leads and application deletion (2026-09-25)
 
 Reviewed the uncommitted `claude/job-collection` work on `bb7a2c7` (main after PR #4), preserving

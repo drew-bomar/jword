@@ -4,6 +4,11 @@ Status: Accepted by the owner on 2026-09-25 (implementation handoff for "Check f
 minimal Leads inbox; the deterministic foundation for later agentic review). Builds on decisions
 018-023. No scheduling, ranking, LLM calls, MCP tools, or extension changes.
 
+**Amended by [decision 026](026-search-preferences-and-lead-filtering.md) (2026-09-27):**
+collection evaluates postings against the owner's search preferences; new postings a hard rule
+excludes are counted, not stored. `record_lead_postings` also stores structured fields and the
+evaluation. The inbox gains views (Recommended by default), a city sort, and a role filter.
+
 ## Context
 
 The watchlist records which public boards belong to which companies, but nothing read them. The

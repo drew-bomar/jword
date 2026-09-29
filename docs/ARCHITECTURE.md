@@ -452,3 +452,27 @@ application creation path takes the same per-owner transaction lock around the d
 and insert. This briefly queues simultaneous creates (including imports) so two leads or a lead
 and a manual create cannot both pass the duplicate warning. A failed scan finish is reported as
 unconfirmed for that board, without stopping other boards or claiming availability was unchanged.
+
+## Search preferences and lead filtering (2026-09-27)
+
+[Decision 026](decisions/026-search-preferences-and-lead-filtering.md). One pure evaluator
+(`packages/core/src/leads/evaluate.ts`) judges each posting against `search_preferences` and the
+profile graduation date. Its result is stored on the lead so views and sorting run in SQL.
+
+```mermaid
+flowchart LR
+    C["checkForNewJobs"] --> P["one snapshot: preferences + graduation date"]
+    P --> E["evaluatePosting (pure)"]
+    E --> R["record_lead_postings: new + EXCLUDED → counted only; known → refreshed"]
+    S["Save preferences / profile, end of each check"] --> V["re-evaluate leads with a stale evaluation_key"]
+    V --> A["apply_lead_evaluations (guards preferences, graduation date, posting revision)"]
+    L["Leads page view / sort / role"] --> Q["listLeads → view → SQL filters"]
+```
+
+Evaluation never changes review status, availability, or review versions, and never deletes leads.
+Posting changes increment a separate input revision. Re-evaluation supplies that revision and
+its graduation-date snapshot; the database rejects stale settings and skips changed posting inputs.
+Settings writes and evaluation batches serialize per owner. Identical preference-save retries
+and no-op saves still repair stale evaluations; incomplete repairs are reported without undoing
+the committed preference save. Persisted evaluation JSON is validated on writes and reads.
+Hard rules exclude only clear cases; everything unknown stays eligible with a flag.

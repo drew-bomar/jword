@@ -46,6 +46,33 @@ Needs migration `20260925000200_delete_application.sql` on the database the app 
 3. Create an application from a lead, delete that application, then open Leads → the lead is
    back in New and **Create application** works again.
 
+## Search preferences and lead filtering (decision 026)
+
+Needs migrations `20260927000100_lead_filtering.sql` and
+`20260927000200_lead_filtering_hardening.sql`. Use the local stack for review checks;
+`.env.local` may point at hosted, so launch the review server with `.env.test.local` values.
+About five minutes:
+
+1. **Before preferences.** Leads shows "Set search preferences"; existing leads all appear in
+   Recommended (nothing is filtered yet), even if graduation is already set in the profile.
+2. **Save.** Profile: set Graduation date (e.g. 2027-05-15). Preferences: New graduate, Full-time,
+   start 2027-08, cities SF → NYC → Chicago → Boston, hide remote-only, Backend preferred, Frontend
+   de-emphasized, age limit blank → Save → "Re-checked N leads".
+3. **Views.** Leads → Recommended hides senior/sales/intern leads and remote-only roles; hover a
+   chip to see the matched text. Filtered out lists existing excluded leads, still New and Listed.
+   Remote only and All behave as named. Sort: Preferred city first puts SF, then NYC, first.
+4. **Collection.** Check for new jobs on a large board (e.g. Stripe) → the summary says "N skipped
+   by preferences" with reasons; skipped postings are not in All.
+5. **Loosen.** Set Target level to Any → Filtered-out leads return to Recommended at once;
+   previously skipped postings appear only after the next check.
+6. **Age limit.** Set 30 days → older dated postings leave Recommended; undated (Workday) stay.
+7. **Concurrent edits.** Open Preferences in two tabs before the first save. Save different
+   values at the same time: one succeeds and the other reports a stale form. Check jobs while
+   saving preferences; new posting labels should survive, and an open Dismiss should still work.
+8. **Retry.** If a save response is lost, fields stay disabled and Retry save repeats that
+   command. If the save succeeds but the lead re-check fails, the form says preferences are saved
+   and asks you to save again; unchanged saves retry the re-check without another audit activity.
+
 ## Check for new jobs and Leads (decision 024)
 
 Needs migration `20260925000100_leads.sql` on the database the app uses. Checks call the real
