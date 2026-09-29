@@ -1,4 +1,10 @@
-import type { LeadAvailability, LeadReviewStatus } from "@jword/core/browser";
+import type {
+  LeadAvailability,
+  LeadReviewStatus,
+  LeadRoleFilter,
+  LeadSort,
+  LeadView,
+} from "@jword/core/browser";
 
 // Shared by the server page and the client filter bar. Kept out of the "use client" module:
 // a Server Component importing a value from a client module receives a client reference, not
@@ -12,6 +18,12 @@ export interface LeadFilters {
   company: string;
   status: LeadStatusFilter;
   availability: LeadAvailability | "";
+  /** Decision 026 views; Recommended by default. */
+  view: LeadView;
+  sort: LeadSort;
+  role: LeadRoleFilter | "";
 }
 
 export const DEFAULT_LEAD_STATUS: LeadStatusFilter = "NEW";
+export const DEFAULT_LEAD_VIEW: LeadView = "RECOMMENDED";
+export const DEFAULT_LEAD_SORT: LeadSort = "NEWEST";

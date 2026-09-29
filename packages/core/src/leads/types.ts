@@ -1,4 +1,10 @@
-import type { CollectionReason } from "../collection/types";
+import type {
+  CollectedPosting,
+  CollectionReason,
+  EmploymentType,
+  WorkplaceType,
+} from "../collection/types";
+import type { LeadArrangement, LeadEvaluation, LeadMatch, RoleFit } from "./evaluate";
 import type { ActorType } from "../domain/enums";
 import type { MutationResult } from "../domain/types";
 import type { SupportedBoardProvider } from "../watchlist/boards";
@@ -43,17 +49,63 @@ export interface Lead {
   reviewStatus: LeadReviewStatus;
   applicationId: string | null;
   version: number;
+  /** Every listed place when the provider gave several; otherwise empty (see `location`). */
+  locations: string[];
+  workplaceType: WorkplaceType | null;
+  employmentType: EmploymentType | null;
+  /** Deterministic evaluation (decision 026); null until first evaluated (treated as eligible). */
+  match: LeadMatch | null;
+  arrangement: LeadArrangement;
+  cityRank: number | null;
+  roleFit: RoleFit;
+  evaluation: LeadEvaluation | null;
 }
 
 export interface LeadDetail extends Lead {
   description: string | null;
 }
 
+/**
+ * Inbox views (decision 026). RECOMMENDED hides filtered-out leads, and remote-only leads when
+ * the owner prefers; REMOTE shows only remote-only leads; FILTERED shows leads a hard rule
+ * now excludes; ALL shows everything. The posting-age limit applies to RECOMMENDED and REMOTE.
+ */
+export const LEAD_VIEWS = ["RECOMMENDED", "REMOTE", "FILTERED", "ALL"] as const;
+export type LeadView = (typeof LEAD_VIEWS)[number];
+export const LEAD_VIEW_LABELS: Record<LeadView, string> = {
+  RECOMMENDED: "Recommended",
+  REMOTE: "Remote only",
+  FILTERED: "Filtered out",
+  ALL: "All",
+};
+
+export const LEAD_SORTS = ["NEWEST", "CITY"] as const;
+export type LeadSort = (typeof LEAD_SORTS)[number];
+export const LEAD_SORT_LABELS: Record<LeadSort, string> = {
+  NEWEST: "Newest first",
+  CITY: "Preferred city first",
+};
+
+export const LEAD_ROLE_FILTERS = ["PREFERRED", "NOT_DEEMPHASIZED"] as const;
+export type LeadRoleFilter = (typeof LEAD_ROLE_FILTERS)[number];
+export const LEAD_ROLE_FILTER_LABELS: Record<LeadRoleFilter, string> = {
+  PREFERRED: "Preferred roles only",
+  NOT_DEEMPHASIZED: "Hide de-emphasized roles",
+};
+
+/** Repository-level filters; the service turns a view and preferences into these. */
 export interface LeadListQuery {
   text?: string;
   companyId?: string;
   reviewStatus?: LeadReviewStatus;
   availability?: LeadAvailability;
+  /** NOT_EXCLUDED keeps unevaluated leads (unknown means eligible). */
+  match?: "NOT_EXCLUDED" | "EXCLUDED";
+  arrangement?: "REMOTE" | "NOT_REMOTE";
+  /** Keeps leads with no stated posting date. */
+  postedOnOrAfter?: string;
+  role?: LeadRoleFilter;
+  sort?: LeadSort;
   limit: number;
   cursor?: string;
 }
@@ -100,6 +152,9 @@ export interface BoardCheckReport {
   relisted: number;
   /** Postings a complete scan no longer found. Always 0 unless status is complete. */
   markedUnavailable: number;
+  /** New postings not stored because a hard rule excluded them, by primary reason. */
+  filtered: number;
+  filteredReasons: Record<string, number>;
   reportedTotal: number | null;
 }
 
@@ -114,6 +169,8 @@ export interface JobCheckTotals {
   updated: number;
   relisted: number;
   markedUnavailable: number;
+  filtered: number;
+  filteredReasons: Record<string, number>;
 }
 
 export interface JobCheckResult {
@@ -121,6 +178,8 @@ export interface JobCheckResult {
   watchId: string | null;
   boards: BoardCheckReport[];
   totals: JobCheckTotals;
+  /** Existing leads re-evaluated after the check (older snapshot or never evaluated). */
+  reevaluated: number;
 }
 
 export interface LeadScanStart {
@@ -132,6 +191,38 @@ export interface LeadPostingCounts {
   created: number;
   updated: number;
   relisted: number;
+  filtered: number;
+  filteredReasons: Record<string, number>;
+}
+
+/** The evaluation as stored with a lead; `detail` is the full evaluator output. */
+export interface StoredLeadEvaluation {
+  match: LeadMatch;
+  arrangement: LeadArrangement;
+  cityRank: number | null;
+  roleFit: RoleFit;
+  key: string;
+  /** The first exclusion code; set only when EXCLUDED. */
+  primaryReason: string | null;
+  detail: LeadEvaluation;
+}
+
+/** A collected posting with the scan's evaluation of it. */
+export interface EvaluatedPosting extends CollectedPosting {
+  evaluation?: StoredLeadEvaluation;
+}
+
+/** The stored fields the evaluator reads, for re-evaluation. */
+export interface LeadEvaluationInput {
+  leadId: string;
+  /** Changes with evaluator inputs, independently of the user's review version. */
+  inputRevision: number;
+  title: string;
+  location: string | null;
+  locations: string[];
+  workplaceType: WorkplaceType | null;
+  employmentType: EmploymentType | null;
+  description: string | null;
 }
 
 export interface LeadMutationResult {

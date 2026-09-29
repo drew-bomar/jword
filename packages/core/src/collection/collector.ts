@@ -7,7 +7,14 @@ import {
   parseWorkdayIdentifier,
   type SupportedBoardProvider,
 } from "../watchlist/boards";
-import type { CollectedPosting, CollectionReason, CollectionResult, JobCollector } from "./types";
+import type {
+  CollectedPosting,
+  CollectionReason,
+  CollectionResult,
+  EmploymentType,
+  JobCollector,
+  WorkplaceType,
+} from "./types";
 
 export interface PublicJobCollectorOptions {
   /** Injected so tests never touch the network. Defaults to the global fetch. */
@@ -22,6 +29,8 @@ export const MAX_POSTINGS_PER_BOARD = 5_000;
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_LOCATION_LENGTH = 500;
 export const MAX_DESCRIPTION_LENGTH = 10_000;
+/** Locations kept per posting when a provider lists several. */
+export const MAX_LOCATIONS = 20;
 /** Greenhouse and Ashby return every posting with its description in one response. */
 const FULL_BOARD_LIMIT = 30_000_000;
 const PAGE_LIMIT = 5_000_000;
@@ -33,6 +42,8 @@ const WORKDAY_PAGE_CONCURRENCY = 4;
 
 const text = z.string().trim().min(1);
 const optionalText = z.string().nullish();
+/** Structured extras never make a posting invalid: anything unexpected becomes undefined. */
+const lenient = <T extends z.ZodType>(schema: T) => schema.optional().catch(undefined);
 const optionalTimestamp = optionalText.refine(
   (value) =>
     !value ||
@@ -53,7 +64,15 @@ const greenhouseJobs = z.object({ jobs: z.array(z.unknown()) });
 const leverJob = z.object({
   id: z.string().regex(/^[A-Za-z0-9-]{1,100}$/),
   text,
-  categories: z.object({ location: optionalText }).nullish(),
+  // commitment is free text ("Full-time", "Internship"); allLocations includes the primary.
+  categories: z
+    .object({
+      location: optionalText,
+      commitment: lenient(z.string()),
+      allLocations: lenient(z.array(z.string())),
+    })
+    .nullish(),
+  workplaceType: lenient(z.string()),
   descriptionPlain: optionalText,
   createdAt: z.number().int().nonnegative().max(253402300799999).nullish(),
 });
@@ -65,6 +84,10 @@ const ashbyJob = z.object({
   descriptionPlain: optionalText,
   publishedAt: optionalTimestamp,
   isListed: z.boolean().optional(),
+  // isRemote is not used: Ashby sets it on hybrid roles too.
+  workplaceType: lenient(z.string()),
+  employmentType: lenient(z.string()),
+  secondaryLocations: lenient(z.array(z.object({ location: z.string() }).loose())),
 });
 const ashbyBoard = z.object({ jobs: z.array(z.unknown()) });
 const workdayJob = z.object({
@@ -76,6 +99,36 @@ const workdayPage = z.object({
   total: z.number().int().nonnegative(),
   jobPostings: z.array(z.unknown()),
 });
+
+/** "OnSite" / "onsite" / "On-site" -> ONSITE; unknown values (e.g. "unspecified") -> null. */
+export function workplaceTypeOf(value: string | null | undefined): WorkplaceType | null {
+  const key = value?.toLowerCase().replace(/[^a-z]/g, "");
+  if (key === "onsite" || key === "inoffice") return "ONSITE";
+  if (key === "hybrid") return "HYBRID";
+  if (key === "remote") return "REMOTE";
+  return null;
+}
+
+/** Ashby enums and Lever free text ("Full-time", "Internship", "Fixed-Term") -> normalized. */
+export function employmentTypeOf(value: string | null | undefined): EmploymentType | null {
+  const key = value?.toLowerCase().replace(/[^a-z]/g, "") ?? "";
+  if (!key) return null;
+  if (/^(intern|internship|coop|interns)/.test(key)) return "INTERN";
+  if (/^(fulltime|permanent|regular)/.test(key)) return "FULL_TIME";
+  if (/^parttime/.test(key)) return "PART_TIME";
+  if (/^(contract|contractor|freelance)/.test(key)) return "CONTRACT";
+  if (/^(temporary|temp|fixedterm|seasonal)/.test(key)) return "TEMPORARY";
+  return null;
+}
+
+/** Primary first, trimmed, de-duplicated, capped; omitted when only the primary exists. */
+function locationList(primary: string | null, others: Array<string | null | undefined>) {
+  const all = [primary, ...others]
+    .map((l) => clip(l, MAX_LOCATION_LENGTH))
+    .filter((l): l is string => Boolean(l));
+  const unique = [...new Set(all)].slice(0, MAX_LOCATIONS);
+  return unique.length > 1 ? { locations: unique } : {};
+}
 
 function clip(value: string | null | undefined, max: number): string | null {
   const trimmed = value?.replace(/\s+/g, " ").trim();
@@ -216,14 +269,20 @@ export function createPublicJobCollector(options: PublicJobCollectorOptions = {}
           failure(error, signal) === "TIME_LIMIT" ? "TIME_LIMIT" : "PAGE_FAILED",
         );
       }
-      postings.each(items, leverJob, (job) => ({
-        postingId: job.id,
-        title: clip(job.text, MAX_TITLE_LENGTH)!,
-        location: clip(job.categories?.location, MAX_LOCATION_LENGTH),
-        jobUrl: `https://jobs.lever.co/${encodeURIComponent(site)}/${job.id}`,
-        description: description(job.descriptionPlain),
-        postedOn: millisDate(job.createdAt),
-      }));
+      postings.each(items, leverJob, (job) => {
+        const location = clip(job.categories?.location, MAX_LOCATION_LENGTH);
+        return {
+          postingId: job.id,
+          title: clip(job.text, MAX_TITLE_LENGTH)!,
+          location,
+          jobUrl: `https://jobs.lever.co/${encodeURIComponent(site)}/${job.id}`,
+          description: description(job.descriptionPlain),
+          postedOn: millisDate(job.createdAt),
+          ...locationList(location, job.categories?.allLocations ?? []),
+          workplaceType: workplaceTypeOf(job.workplaceType),
+          employmentType: employmentTypeOf(job.categories?.commitment),
+        };
+      });
       if (items.length < LEVER_PAGE_SIZE) {
         return settle(postings, postings.repeated ? "COUNT_MISMATCH" : null);
       }
@@ -250,6 +309,12 @@ export function createPublicJobCollector(options: PublicJobCollectorOptions = {}
             jobUrl: `https://jobs.ashbyhq.com/${encodeURIComponent(name)}/${job.id}`,
             description: description(job.descriptionPlain),
             postedOn: isoDate(job.publishedAt),
+            ...locationList(
+              clip(job.location, MAX_LOCATION_LENGTH),
+              (job.secondaryLocations ?? []).map((l) => l.location),
+            ),
+            workplaceType: workplaceTypeOf(job.workplaceType),
+            employmentType: employmentTypeOf(job.employmentType),
           },
     );
     return settle(postings, null);

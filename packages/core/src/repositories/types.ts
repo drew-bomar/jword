@@ -42,15 +42,19 @@ import type {
   SetLeadReviewStatusCommand,
 } from "../leads/schemas";
 import type {
+  EvaluatedPosting,
   Lead,
   LeadCompany,
   LeadDetail,
+  LeadEvaluationInput,
   LeadListQuery,
   LeadMutationResult,
   LeadPostingCounts,
   LeadScanStart,
+  StoredLeadEvaluation,
 } from "../leads/types";
-import type { CollectedPosting } from "../collection/types";
+import type { SaveSearchPreferencesCommand } from "../preferences/schemas";
+import type { PreferencesMutationResult, SearchPreferences } from "../preferences/types";
 import type { SupportedBoardProvider } from "../watchlist/boards";
 
 export interface MutationContext {
@@ -167,10 +171,11 @@ export interface LeadsRepository {
     ctx: MutationContext,
     board: { watchId: string; provider: SupportedBoardProvider; boardIdentifier: string },
   ): Promise<LeadScanStart>;
+  /** New postings evaluated EXCLUDED are counted, not stored; known postings are refreshed. */
   recordLeadPostings(
     ctx: MutationContext,
     scanId: string,
-    postings: CollectedPosting[],
+    postings: EvaluatedPosting[],
   ): Promise<LeadPostingCounts>;
   finishLeadScan(
     ctx: MutationContext,
@@ -194,4 +199,27 @@ export interface LeadsRepository {
     ctx: MutationContext,
     command: CreateApplicationFromLeadCommand,
   ): Promise<LeadMutationResult>;
+
+  // Search preferences and stored evaluations (decision 026).
+  getSearchPreferences(userId: string): Promise<SearchPreferences | null>;
+  saveSearchPreferences(
+    ctx: MutationContext,
+    command: SaveSearchPreferencesCommand,
+  ): Promise<PreferencesMutationResult>;
+  /** Leads whose stored evaluation key differs from `key`, by lead id after `afterId`. */
+  listLeadsToEvaluate(
+    userId: string,
+    query: { key: string; afterId?: string; limit: number },
+  ): Promise<LeadEvaluationInput[]>;
+  /** Rejects stale preferences/profile snapshots; skips postings whose inputs have changed. */
+  applyLeadEvaluations(
+    ctx: MutationContext,
+    preferencesVersion: number,
+    evaluations: Array<{
+      leadId: string;
+      expectedInputRevision: number;
+      evaluation: StoredLeadEvaluation;
+    }>,
+    graduationDate: string | null,
+  ): Promise<{ updated: number }>;
 }

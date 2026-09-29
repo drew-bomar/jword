@@ -14,6 +14,7 @@ import { formatDate, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ProviderBadge } from "@/features/watchlist/badges";
 import { LeadActions } from "./lead-actions";
+import { LeadLabels } from "./lead-labels";
 
 function Title({ lead }: { lead: Lead }) {
   return (
@@ -108,7 +109,7 @@ export function LeadsTable({
         </div>
         <h2 className="text-sm font-medium">No matching leads</h2>
         <p className="text-muted-foreground mt-1 max-w-sm text-sm">
-          Nothing matches the current search and filters.
+          Nothing matches the current view, search, and filters.
         </p>
         <div className="mt-4">
           <Button asChild variant="outline">
@@ -140,14 +141,19 @@ export function LeadsTable({
             {items.map((lead) => (
               <TableRow key={lead.leadId} data-testid="lead-row">
                 <TableCell className="max-w-[320px]">
-                  <div className="flex min-w-0 flex-col">
+                  <div className="flex min-w-0 flex-col gap-1">
                     <Title lead={lead} />
                     <Review lead={lead} />
+                    <LeadLabels lead={lead} />
                   </div>
                 </TableCell>
                 <TableCell>{lead.company}</TableCell>
-                <TableCell className="text-muted-foreground max-w-[200px] truncate text-xs">
+                <TableCell
+                  className="text-muted-foreground max-w-[200px] truncate text-xs"
+                  title={lead.locations.length > 1 ? lead.locations.join(" · ") : undefined}
+                >
                   {lead.location ?? "—"}
+                  {lead.locations.length > 1 ? ` +${lead.locations.length - 1}` : ""}
                 </TableCell>
                 <TableCell>
                   <ProviderBadge provider={lead.provider} />
@@ -182,7 +188,8 @@ export function LeadsTable({
               {lead.location ? <span>{lead.location}</span> : null}
               <Review lead={lead} />
             </div>
-            <div className="mt-1">
+            <div className="mt-1 space-y-1">
+              <LeadLabels lead={lead} />
               <Found lead={lead} />
             </div>
             <div className="mt-2">

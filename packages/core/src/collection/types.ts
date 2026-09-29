@@ -1,5 +1,19 @@
 import type { SupportedBoardProvider } from "../watchlist/boards";
 
+/** A provider's structured work arrangement (decision 026). Never inferred from descriptions. */
+export const WORKPLACE_TYPES = ["ONSITE", "HYBRID", "REMOTE"] as const;
+export type WorkplaceType = (typeof WORKPLACE_TYPES)[number];
+
+/** A provider's structured employment type, normalized (decision 026). */
+export const EMPLOYMENT_TYPES = [
+  "FULL_TIME",
+  "PART_TIME",
+  "INTERN",
+  "CONTRACT",
+  "TEMPORARY",
+] as const;
+export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
+
 /** One posting read from a provider's public board (decision 024). Never fetched by URL later. */
 export interface CollectedPosting {
   /** The provider's own stable posting id (Workday: its external path). */
@@ -12,6 +26,15 @@ export interface CollectedPosting {
   description: string | null;
   /** YYYY-MM-DD when the provider supplies an absolute date; never inferred. */
   postedOn: string | null;
+  /**
+   * Every place the provider lists (primary first) when it gives more than one field;
+   * otherwise omitted and `location` is the only place. At most MAX_LOCATIONS entries.
+   */
+  locations?: string[];
+  /** From a structured provider field only (Ashby, Lever); omitted otherwise. */
+  workplaceType?: WorkplaceType | null;
+  /** From a structured provider field only (Ashby, Lever); omitted otherwise. */
+  employmentType?: EmploymentType | null;
 }
 
 /**

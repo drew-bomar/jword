@@ -8,8 +8,14 @@ import {
   LEAD_AVAILABILITY_LABELS,
   LEAD_REVIEW_LABELS,
   LEAD_REVIEW_STATUSES,
+  LEAD_ROLE_FILTER_LABELS,
+  LEAD_ROLE_FILTERS,
+  LEAD_SORT_LABELS,
+  LEAD_SORTS,
   type LeadAvailability,
   type LeadCompany,
+  type LeadRoleFilter,
+  type LeadSort,
 } from "@jword/core/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DEFAULT_LEAD_STATUS, type LeadFilters, type LeadStatusFilter } from "./filters";
+import {
+  DEFAULT_LEAD_SORT,
+  DEFAULT_LEAD_STATUS,
+  type LeadFilters,
+  type LeadStatusFilter,
+} from "./filters";
 
 const ALL = "__all__";
 
@@ -54,6 +65,8 @@ export function LeadFiltersBar({
     set("company", merged.company);
     set("status", merged.status === DEFAULT_LEAD_STATUS ? "" : merged.status.toLowerCase());
     set("availability", merged.availability.toLowerCase());
+    set("sort", merged.sort === DEFAULT_LEAD_SORT ? "" : merged.sort.toLowerCase());
+    set("role", merged.role.toLowerCase());
     startTransition(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
   }
 
@@ -65,7 +78,12 @@ export function LeadFiltersBar({
   }, [q]);
 
   const hasFilters = Boolean(
-    filters.q || filters.company || filters.status !== DEFAULT_LEAD_STATUS || filters.availability,
+    filters.q ||
+    filters.company ||
+    filters.status !== DEFAULT_LEAD_STATUS ||
+    filters.availability ||
+    filters.role ||
+    filters.sort !== DEFAULT_LEAD_SORT,
   );
 
   return (
@@ -162,13 +180,60 @@ export function LeadFiltersBar({
         </Select>
       </div>
 
+      <div className="space-y-1">
+        <Label htmlFor="lead-role" className="text-muted-foreground text-xs">
+          Role
+        </Label>
+        <Select
+          value={filters.role || ALL}
+          onValueChange={(v) => update({ role: v === ALL ? "" : (v as LeadRoleFilter) })}
+        >
+          <SelectTrigger id="lead-role" className="w-[190px]" aria-label="Filter by role interest">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All roles</SelectItem>
+            {LEAD_ROLE_FILTERS.map((r) => (
+              <SelectItem key={r} value={r}>
+                {LEAD_ROLE_FILTER_LABELS[r]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="lead-sort" className="text-muted-foreground text-xs">
+          Sort
+        </Label>
+        <Select value={filters.sort} onValueChange={(v) => update({ sort: v as LeadSort })}>
+          <SelectTrigger id="lead-sort" className="w-[180px]" aria-label="Sort leads">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LEAD_SORTS.map((s) => (
+              <SelectItem key={s} value={s}>
+                {LEAD_SORT_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {hasFilters ? (
         <Button
           type="button"
           variant="ghost"
           onClick={() => {
             setQ("");
-            update({ q: "", company: "", status: DEFAULT_LEAD_STATUS, availability: "" });
+            update({
+              q: "",
+              company: "",
+              status: DEFAULT_LEAD_STATUS,
+              availability: "",
+              role: "",
+              sort: DEFAULT_LEAD_SORT,
+            });
           }}
         >
           <XIcon data-icon="inline-start" aria-hidden />

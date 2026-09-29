@@ -13,6 +13,7 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import {
+  EXCLUSION_LABELS,
   ATS_PROVIDER_LABELS,
   type BoardCheckReason,
   type BoardCheckReport,
@@ -60,11 +61,15 @@ function plural(count: number, word: string) {
 
 /** "3 new, 1 updated" style counts for one board or the whole check. */
 function counts(
-  r: Pick<BoardCheckReport, "found" | "created" | "updated" | "relisted" | "markedUnavailable">,
+  r: Pick<
+    BoardCheckReport,
+    "found" | "created" | "updated" | "relisted" | "markedUnavailable" | "filtered"
+  >,
 ) {
   const parts = [`${r.created} new`, `${r.updated} updated`];
   if (r.relisted) parts.push(`${r.relisted} listed again`);
   if (r.markedUnavailable) parts.push(`${r.markedUnavailable} no longer listed`);
+  if (r.filtered) parts.push(`${r.filtered} skipped by preferences`);
   return `${plural(r.found, "job")} read: ${parts.join(", ")}`;
 }
 
@@ -74,6 +79,7 @@ export function summaryLine(result: JobCheckResult): string {
   return [
     `${plural(t.created, "new lead")}, ${t.updated} updated`,
     t.markedUnavailable ? `${t.markedUnavailable} no longer listed` : null,
+    t.filtered ? `${t.filtered} skipped by preferences` : null,
     incomplete ? `${plural(incomplete, "board")} incomplete` : null,
     t.unsupported ? `${t.unsupported} not supported` : null,
   ]
@@ -140,6 +146,22 @@ export function CheckSummary({ result }: { result: JobCheckResult }) {
           })}
         </ul>
       )}
+      {t.filtered ? (
+        <p className="text-muted-foreground text-xs" data-testid="check-filtered">
+          Skipped new postings:{" "}
+          {Object.entries(t.filteredReasons)
+            .map(
+              ([reason, count]) =>
+                `${count} ${(EXCLUSION_LABELS as Record<string, string>)[reason]?.toLowerCase() ?? reason}`,
+            )
+            .join(", ")}
+          . They were not saved; if you loosen your{" "}
+          <Link href="/settings/preferences" className="underline">
+            preferences
+          </Link>
+          , they appear on the next check.
+        </p>
+      ) : null}
     </section>
   );
 }
