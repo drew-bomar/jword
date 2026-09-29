@@ -132,6 +132,12 @@ export function safeMutationResult(result: MutationResult): MutationResult {
 export function createTrackerServices(deps: ServiceDependencies) {
   const { repository, clock } = deps;
   const logger = deps.logger ?? silentLogger;
+  const leadServices = createLeadServices({
+    repository,
+    logger,
+    clock,
+    jobCollector: deps.jobCollector,
+  });
 
   async function run<T>(
     operation: string,
@@ -184,7 +190,7 @@ export function createTrackerServices(deps: ServiceDependencies) {
   return {
     // Company watchlist (decision 018): same repository, same entry points.
     ...createWatchlistServices({ repository, logger, boardDirectory: deps.boardDirectory }),
-    ...createLeadServices({ repository, logger, clock, jobCollector: deps.jobCollector }),
+    ...leadServices,
 
     // ----------------------------------------------------------------- reads
     async searchApplications(
@@ -428,9 +434,13 @@ export function createTrackerServices(deps: ServiceDependencies) {
 
     async saveCandidateProfile(input: unknown, actor: ActorContext): Promise<CandidateProfile> {
       const command = parseOrThrow(candidateProfileSchema, input);
-      return run("save_candidate_profile", actor, {}, () =>
+      const profile = await run("save_candidate_profile", actor, {}, () =>
         repository.saveCandidateProfile(actor.userId, command),
       );
+      // The graduation date feeds the lead graduation rule (decision 026). The profile is
+      // saved either way; a failed refresh is logged and retried by the next check or save.
+      await leadServices.reevaluateLeads(actor).catch(() => undefined);
+      return profile;
     },
   };
 }

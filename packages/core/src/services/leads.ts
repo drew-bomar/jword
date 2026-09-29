@@ -4,7 +4,20 @@ import { JwordError, toJwordError } from "../domain/errors";
 import type { Page } from "../domain/types";
 import { silentLogger, type Logger } from "../logging";
 import type { CollectionResult, JobCollector } from "../collection/types";
-import type { LeadsRepository, MutationContext, WatchlistRepository } from "../repositories/types";
+import type {
+  LeadsRepository,
+  MutationContext,
+  TrackerRepository,
+  WatchlistRepository,
+} from "../repositories/types";
+import {
+  evaluatePosting,
+  evaluationKey,
+  toStoredEvaluation,
+  type EvaluationContext,
+} from "../leads/evaluate";
+import { saveSearchPreferencesSchema } from "../preferences/schemas";
+import { type PreferencesMutationResult, type SearchPreferences } from "../preferences/types";
 import { parseOrThrow } from "../validation/schemas";
 import { isSupportedBoardProvider, type SupportedBoardProvider } from "../watchlist/boards";
 import type { WatchBoard, WatchedCompany } from "../watchlist/types";
@@ -23,11 +36,14 @@ import type {
   Lead,
   LeadCompany,
   LeadDetail,
+  LeadListQuery,
   LeadMutationResult,
 } from "../leads/types";
 
 export interface LeadServiceDependencies {
-  repository: LeadsRepository & WatchlistRepository;
+  repository: LeadsRepository &
+    WatchlistRepository &
+    Pick<TrackerRepository, "getCandidateProfile">;
   clock: Clock;
   logger?: Logger;
   /** Reads provider boards (decision 024). Without one, checks fail with a setup error. */
@@ -39,6 +55,8 @@ export const BOARD_CHECK_CONCURRENCY = 3;
 /** A whole check stops starting new boards after this; Vercel functions allow 300 seconds. */
 export const JOB_CHECK_BUDGET_MS = 240_000;
 const WATCH_PAGE = 200;
+/** Leads read and re-evaluated per round trip. */
+const EVALUATION_PAGE = 250;
 
 const FATAL = new Set(["UNAUTHENTICATED", "FORBIDDEN"]);
 
@@ -76,6 +94,8 @@ function totalsOf(boards: BoardCheckReport[]): JobCheckTotals {
     updated: 0,
     relisted: 0,
     markedUnavailable: 0,
+    filtered: 0,
+    filteredReasons: {},
   };
   for (const board of boards) {
     totals[board.status] += 1;
@@ -84,11 +104,28 @@ function totalsOf(boards: BoardCheckReport[]): JobCheckTotals {
     totals.updated += board.updated;
     totals.relisted += board.relisted;
     totals.markedUnavailable += board.markedUnavailable;
+    totals.filtered += board.filtered;
+    for (const [reason, count] of Object.entries(board.filteredReasons)) {
+      totals.filteredReasons[reason] = (totals.filteredReasons[reason] ?? 0) + count;
+    }
   }
   return totals;
 }
 
 const SCAN_STATUS = { complete: "COMPLETE", partial: "PARTIAL", failed: "FAILED" } as const;
+
+/** YYYY-MM-DD minus whole days (calendar arithmetic, no timezone). */
+function minusDays(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10);
+}
+
+interface EvaluationSnapshot {
+  ctx: EvaluationContext;
+  preferences: SearchPreferences | null;
+  /** 0 when the owner has not saved preferences. */
+  preferencesVersion: number;
+}
 
 /**
  * Job collection and the Leads inbox (decision 024). Collection reads watched boards through
@@ -137,6 +174,60 @@ export function createLeadServices(deps: LeadServiceDependencies) {
 
   const context = (actor: ActorContext): MutationContext => ({ actor, today: null });
 
+  /** One consistent read of preferences + graduation date; a scan uses it throughout. */
+  async function snapshot(userId: string): Promise<EvaluationSnapshot> {
+    const [preferences, profile] = await Promise.all([
+      repository.getSearchPreferences(userId),
+      repository.getCandidateProfile(userId),
+    ]);
+    const graduationDate = profile?.graduationDate ?? null;
+    const preferencesVersion = preferences?.version ?? 0;
+    return {
+      preferences,
+      preferencesVersion,
+      ctx: {
+        preferences,
+        graduationDate,
+        key: evaluationKey(preferencesVersion, graduationDate),
+      },
+    };
+  }
+
+  /**
+   * Re-evaluate every lead whose stored evaluation was made with other preferences, another
+   * graduation date, or older rules. Changes evaluation columns only: never review status,
+   * availability, or version, and never deletes. A changed settings snapshot is rejected;
+   * saves report an incomplete re-check that can be retried without repeating the mutation.
+   */
+  async function reevaluate(actor: ActorContext): Promise<number> {
+    const current = await snapshot(actor.userId);
+    let updated = 0;
+    let afterId: string | undefined;
+    for (;;) {
+      const rows = await repository.listLeadsToEvaluate(actor.userId, {
+        key: current.ctx.key,
+        afterId,
+        limit: EVALUATION_PAGE,
+      });
+      if (rows.length === 0) break;
+      const evaluations = rows.map((row) => ({
+        leadId: row.leadId,
+        expectedInputRevision: row.inputRevision,
+        evaluation: toStoredEvaluation(evaluatePosting(row, current.ctx), current.ctx.key),
+      }));
+      const applied = await repository.applyLeadEvaluations(
+        context(actor),
+        current.preferencesVersion,
+        evaluations,
+        current.ctx.graduationDate,
+      );
+      updated += applied.updated;
+      if (rows.length < EVALUATION_PAGE) break;
+      afterId = rows[rows.length - 1]!.leadId;
+    }
+    return updated;
+  }
+
   async function activeWatches(userId: string): Promise<WatchedCompany[]> {
     const out: WatchedCompany[] = [];
     let cursor: string | undefined;
@@ -158,6 +249,7 @@ export function createLeadServices(deps: LeadServiceDependencies) {
     watch: WatchedCompany,
     board: WatchBoard,
     budget: AbortSignal,
+    evaluation: EvaluationContext,
   ): Promise<BoardCheckReport> {
     const report: BoardCheckReport = {
       watchId: watch.watchId,
@@ -173,6 +265,8 @@ export function createLeadServices(deps: LeadServiceDependencies) {
       updated: 0,
       relisted: 0,
       markedUnavailable: 0,
+      filtered: 0,
+      filteredReasons: {},
       reportedTotal: null,
     };
     if (!isSupportedBoardProvider(board.provider) || !board.boardIdentifier) {
@@ -206,9 +300,14 @@ export function createLeadServices(deps: LeadServiceDependencies) {
     let status = collected.status;
     let reason: BoardCheckReport["reason"] = collected.reason;
     try {
-      const counts = collected.postings.length
-        ? await repository.recordLeadPostings(ctx, scanId, collected.postings)
-        : { created: 0, updated: 0, relisted: 0 };
+      // Evaluate before saving: a new posting a hard rule excludes is counted, not stored.
+      const evaluated = collected.postings.map((posting) => ({
+        ...posting,
+        evaluation: toStoredEvaluation(evaluatePosting(posting, evaluation), evaluation.key),
+      }));
+      const counts = evaluated.length
+        ? await repository.recordLeadPostings(ctx, scanId, evaluated)
+        : { created: 0, updated: 0, relisted: 0, filtered: 0, filteredReasons: {} };
       Object.assign(report, counts, { found: collected.postings.length });
     } catch (error) {
       const typed = toJwordError(error);
@@ -281,28 +380,113 @@ export function createLeadServices(deps: LeadServiceDependencies) {
           const timeout = AbortSignal.timeout(JOB_CHECK_BUDGET_MS);
           const budget = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
           const tasks = watches.flatMap((watch) => watch.boards.map((board) => ({ watch, board })));
+          // One preference snapshot for the whole check, so every board is judged alike.
+          const scanSnapshot = await snapshot(actor.userId);
           const boards = await mapPool(tasks, BOARD_CHECK_CONCURRENCY, ({ watch, board }) =>
-            checkBoard(actor, watch, board, budget),
+            checkBoard(actor, watch, board, budget, scanSnapshot.ctx),
           );
-          return { watchId: query.watchId ?? null, boards, totals: totalsOf(boards) };
+          // Leads saved with an older snapshot (preferences edited mid-check) or never
+          // evaluated are brought up to date. A failure here never loses the check result.
+          let reevaluated = 0;
+          try {
+            // run() logs the failure; the check result is still returned.
+            reevaluated = await run("reevaluate_leads", actor, undefined, () => reevaluate(actor));
+          } catch (error) {
+            if (FATAL.has(toJwordError(error).code)) throw error;
+          }
+          return {
+            watchId: query.watchId ?? null,
+            boards,
+            totals: totalsOf(boards),
+            reevaluated,
+          };
         },
         (result) => ({
           ...(result.watchId ? { watchId: result.watchId } : {}),
           boards: result.totals.boards,
           created: result.totals.created,
           markedUnavailable: result.totals.markedUnavailable,
+          filtered: result.totals.filtered,
           incompleteBoards: result.totals.partial + result.totals.failed,
         }),
       );
     },
 
+    /**
+     * List leads in one view (decision 026). RECOMMENDED (default) hides filtered-out leads,
+     * and remote-only leads when the owner prefers; REMOTE shows only remote-only leads;
+     * FILTERED shows leads a hard rule now excludes; ALL shows everything. The optional
+     * posting-age limit applies to RECOMMENDED and REMOTE and keeps undated postings.
+     */
     async listLeads(input: unknown, actor: ActorContext): Promise<Page<Lead>> {
-      const query = parseOrThrow(listLeadsSchema, input ?? {});
-      return run("list_leads", actor, undefined, () =>
-        repository.listLeads(actor.userId, {
-          ...query,
-          limit: query.limit ?? LEADS_DEFAULT_LIMIT,
-        }),
+      const { view = "RECOMMENDED", ...query } = parseOrThrow(listLeadsSchema, input ?? {});
+      return run("list_leads", actor, undefined, async () => {
+        const filters: LeadListQuery = { ...query, limit: query.limit ?? LEADS_DEFAULT_LIMIT };
+        if (view === "RECOMMENDED" || view === "REMOTE") {
+          const preferences = await repository.getSearchPreferences(actor.userId);
+          filters.match = "NOT_EXCLUDED";
+          if (view === "REMOTE") filters.arrangement = "REMOTE";
+          else if (preferences?.hideRemoteOnly) filters.arrangement = "NOT_REMOTE";
+          if (preferences?.maxPostingAgeDays) {
+            filters.postedOnOrAfter = minusDays(clock.today(), preferences.maxPostingAgeDays);
+          }
+        } else if (view === "FILTERED") {
+          filters.match = "EXCLUDED";
+        }
+        return repository.listLeads(actor.userId, filters);
+      });
+    },
+
+    /** The owner's saved search preferences, or null before the first save. */
+    async getSearchPreferences(actor: ActorContext): Promise<SearchPreferences | null> {
+      return run("get_search_preferences", actor, undefined, () =>
+        repository.getSearchPreferences(actor.userId),
+      );
+    },
+
+    /**
+     * Save the whole preference set (version-checked, retry-safe, audited), then re-evaluate
+     * existing leads. Re-evaluation never deletes, dismisses, or changes availability. New
+     * postings skipped under earlier preferences can only appear on the next check.
+     */
+    async saveSearchPreferences(
+      input: unknown,
+      actor: ActorContext,
+    ): Promise<PreferencesMutationResult> {
+      const command = parseOrThrow(saveSearchPreferencesSchema, input);
+      return run(
+        "save_search_preferences",
+        actor,
+        command.requestId,
+        async () => {
+          const result = await repository.saveSearchPreferences(context(actor), command);
+          try {
+            return {
+              ...result,
+              reevaluated: await run("reevaluate_leads", actor, command.requestId, () =>
+                reevaluate(actor),
+              ),
+              reevaluationPending: false,
+            };
+          } catch (error) {
+            // The save committed; stale evaluations are refreshed by the next check or save.
+            const typed = toJwordError(error);
+            if (FATAL.has(typed.code)) throw typed;
+            return { ...result, reevaluationPending: true };
+          }
+        },
+        (r) => ({ noop: r.noop, replayed: r.replayed, reevaluated: r.reevaluated }),
+      );
+    },
+
+    /** Bring every lead's stored evaluation up to date with current preferences and rules. */
+    async reevaluateLeads(actor: ActorContext): Promise<{ updated: number }> {
+      return run(
+        "reevaluate_leads",
+        actor,
+        undefined,
+        async () => ({ updated: await reevaluate(actor) }),
+        (r) => ({ updated: r.updated }),
       );
     },
 

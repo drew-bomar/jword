@@ -15,7 +15,6 @@ import type {
 } from "../domain/types";
 import { findDuplicateCandidates, type DuplicateIndexEntry } from "../import/validate";
 import { decodeCursor, encodeCursor, filterKeyFor } from "../repositories/cursor";
-import type { CollectedPosting } from "../collection/types";
 import type {
   CreateApplicationFromLeadCommand,
   SetLeadReviewStatusCommand,
@@ -31,8 +30,15 @@ import type {
   LeadPostingCounts,
   LeadReviewStatus,
   LeadScanStart,
+  EvaluatedPosting,
+  LeadEvaluationInput,
+  StoredLeadEvaluation,
 } from "../leads/types";
 import { providerLabel } from "../leads/labels";
+import type { EmploymentType, WorkplaceType } from "../collection/types";
+import type { LeadArrangement, LeadEvaluation, LeadMatch, RoleFit } from "../leads/evaluate";
+import type { SaveSearchPreferencesCommand } from "../preferences/schemas";
+import type { PreferencesMutationResult, SearchPreferences } from "../preferences/types";
 import type { SupportedBoardProvider } from "../watchlist/boards";
 import type {
   LeadsRepository,
@@ -142,6 +148,26 @@ interface LeadRecord {
   reviewStatus: LeadReviewStatus;
   applicationId: string | null;
   version: number;
+  locations: string[];
+  workplaceType: WorkplaceType | null;
+  employmentType: EmploymentType | null;
+  match: LeadMatch | null;
+  arrangement: LeadArrangement;
+  cityRank: number | null;
+  roleFit: RoleFit;
+  evaluation: LeadEvaluation | null;
+  evaluationKey: string | null;
+  inputRevision: number;
+}
+
+interface PreferenceActivityRecord {
+  id: string;
+  userId: string;
+  actorType: string;
+  version: number;
+  summary: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown>;
 }
 
 interface LeadActivityRecord extends LeadActivity {
@@ -194,7 +220,7 @@ interface ActivityRecord extends ApplicationActivity {
 interface Receipt {
   operation: string;
   fingerprint: string;
-  result: MutationResult | WatchMutationResult | LeadMutationResult;
+  result: MutationResult | WatchMutationResult | LeadMutationResult | PreferencesMutationResult;
 }
 
 const PRIORITY_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
@@ -220,6 +246,10 @@ export class FakeTrackerRepository
   leadScans: LeadScanRecord[] = [];
   leads: LeadRecord[] = [];
   leadActivities: LeadActivityRecord[] = [];
+  searchPreferences = new Map<string, SearchPreferences>();
+  preferenceActivities: PreferenceActivityRecord[] = [];
+  /** Filtered-out new postings per scan, by reason (mirrors lead_scans.filtered_reasons). */
+  scanFiltered = new Map<string, Record<string, number>>();
   /** Test hook: throw inside the "transaction" after the primary write to prove rollback. */
   failBeforeActivity = false;
   private clockMs = Date.parse("2026-09-21T15:00:00Z");
@@ -507,6 +537,8 @@ export class FakeTrackerRepository
       leadScans: structuredClone(this.leadScans),
       leads: structuredClone(this.leads),
       leadActivities: structuredClone(this.leadActivities),
+      searchPreferences: structuredClone(this.searchPreferences),
+      preferenceActivities: structuredClone(this.preferenceActivities),
       receipts: new Map(this.receipts),
     };
     try {
@@ -1776,6 +1808,14 @@ export class FakeTrackerRepository
       reviewStatus: lead.reviewStatus,
       applicationId: lead.applicationId,
       version: lead.version,
+      locations: lead.locations,
+      workplaceType: lead.workplaceType,
+      employmentType: lead.employmentType,
+      match: lead.match,
+      arrangement: lead.arrangement,
+      cityRank: lead.cityRank,
+      roleFit: lead.roleFit,
+      evaluation: lead.evaluation,
     };
   }
 
@@ -1863,20 +1903,43 @@ export class FakeTrackerRepository
   async recordLeadPostings(
     ctx: MutationContext,
     scanId: string,
-    postings: CollectedPosting[],
+    postings: EvaluatedPosting[],
   ): Promise<LeadPostingCounts> {
     const userId = ctx.actor.userId;
     const scan = this.runningScan(userId, scanId);
     const source = this.leadSources.find((s) => s.id === scan.sourceId)!;
-    const counts: LeadPostingCounts = { created: 0, updated: 0, relisted: 0 };
+    const counts: LeadPostingCounts = {
+      created: 0,
+      updated: 0,
+      relisted: 0,
+      filtered: 0,
+      filteredReasons: {},
+    };
     const now = this.now();
     for (const posting of postings) {
       const existing = this.leads.find(
         (l) => l.userId === userId && l.sourceId === source.id && l.postingId === posting.postingId,
       );
+      const evaluation = posting.evaluation;
+      const structured = {
+        locations: posting.locations ?? [],
+        workplaceType: posting.workplaceType ?? null,
+        employmentType: posting.employmentType ?? null,
+      };
       if (!existing) {
+        if (evaluation?.match === "EXCLUDED") {
+          counts.filtered += 1;
+          const reason = evaluation.primaryReason!;
+          counts.filteredReasons[reason] = (counts.filteredReasons[reason] ?? 0) + 1;
+          const perScan = this.scanFiltered.get(scan.id) ?? {};
+          perScan[reason] = (perScan[reason] ?? 0) + 1;
+          this.scanFiltered.set(scan.id, perScan);
+          continue;
+        }
         counts.created += 1;
         this.leads.push({
+          ...structured,
+          ...this.evaluationFields(evaluation),
           id: randomUUID(),
           userId,
           sourceId: source.id,
@@ -1894,10 +1957,20 @@ export class FakeTrackerRepository
           reviewStatus: "NEW",
           applicationId: null,
           version: 1,
+          inputRevision: 1,
         });
         continue;
       }
       const postedOn = posting.postedOn ?? existing.postedOn;
+      if (
+        existing.title !== posting.title ||
+        existing.location !== posting.location ||
+        existing.description !== posting.description ||
+        JSON.stringify(existing.locations) !== JSON.stringify(structured.locations) ||
+        existing.workplaceType !== structured.workplaceType ||
+        existing.employmentType !== structured.employmentType
+      )
+        existing.inputRevision += 1;
       if (existing.availability === "UNAVAILABLE") counts.relisted += 1;
       else if (
         existing.title !== posting.title ||
@@ -1917,6 +1990,8 @@ export class FakeTrackerRepository
         lastSeenAt: now,
         availability: "AVAILABLE",
         unavailableAt: null,
+        ...structured,
+        ...(evaluation ? this.evaluationFields(evaluation) : {}),
       });
     }
     return counts;
@@ -1973,8 +2048,21 @@ export class FakeTrackerRepository
     if (query.companyId) rows = rows.filter((r) => r.companyId === query.companyId);
     if (query.reviewStatus) rows = rows.filter((r) => r.reviewStatus === query.reviewStatus);
     if (query.availability) rows = rows.filter((r) => r.availability === query.availability);
+    if (query.match === "EXCLUDED") rows = rows.filter((r) => r.match === "EXCLUDED");
+    if (query.match === "NOT_EXCLUDED") rows = rows.filter((r) => r.match !== "EXCLUDED");
+    if (query.arrangement === "REMOTE") rows = rows.filter((r) => r.arrangement === "REMOTE");
+    if (query.arrangement === "NOT_REMOTE") rows = rows.filter((r) => r.arrangement !== "REMOTE");
+    const cutoff = query.postedOnOrAfter;
+    if (cutoff) rows = rows.filter((r) => r.postedOn === null || r.postedOn >= cutoff);
+    if (query.role === "PREFERRED") rows = rows.filter((r) => r.roleFit === "PREFERRED");
+    if (query.role === "NOT_DEEMPHASIZED") rows = rows.filter((r) => r.roleFit !== "DEEMPHASIZED");
+    const byCity = (a: Lead, b: Lead) =>
+      query.sort === "CITY" ? (a.cityRank ?? 99) - (b.cityRank ?? 99) : 0;
     rows.sort(
-      (a, b) => b.firstSeenAt.localeCompare(a.firstSeenAt) || a.leadId.localeCompare(b.leadId),
+      (a, b) =>
+        byCity(a, b) ||
+        b.firstSeenAt.localeCompare(a.firstSeenAt) ||
+        a.leadId.localeCompare(b.leadId),
     );
     const page = rows.slice(offset, offset + limit + 1);
     const hasMore = page.length > limit;
@@ -2193,5 +2281,171 @@ export class FakeTrackerRepository
         },
       });
     });
+  }
+
+  // ------------------------------------------------------ search preferences
+  private evaluationFields(evaluation: StoredLeadEvaluation | undefined) {
+    return {
+      match: evaluation?.match ?? null,
+      arrangement: evaluation?.arrangement ?? ("UNKNOWN" as const),
+      cityRank: evaluation?.cityRank ?? null,
+      roleFit: evaluation?.roleFit ?? ("NEUTRAL" as const),
+      evaluation: evaluation?.detail ?? null,
+      evaluationKey: evaluation?.key ?? null,
+    };
+  }
+
+  async getSearchPreferences(userId: string): Promise<SearchPreferences | null> {
+    const prefs = this.searchPreferences.get(userId);
+    return prefs ? structuredClone(prefs) : null;
+  }
+
+  /** Mirrors public.save_search_preferences(). */
+  async saveSearchPreferences(
+    ctx: MutationContext,
+    command: SaveSearchPreferencesCommand,
+  ): Promise<PreferencesMutationResult> {
+    const op = "save_search_preferences";
+    const fp = this.fingerprint(op, ctx, command);
+    const receipt = this.receipts.get(`${ctx.actor.userId}:${command.requestId}`);
+    if (receipt) {
+      if (receipt.operation !== op || receipt.fingerprint !== fp) {
+        throw new JwordError(
+          "CONFLICT",
+          "This request id was already used for a different command.",
+          {
+            reason: "REQUEST_ID_REUSED",
+          },
+        );
+      }
+      return { ...(receipt.result as PreferencesMutationResult), replayed: true };
+    }
+    return this.transaction(() => {
+      const userId = ctx.actor.userId;
+      const current = this.searchPreferences.get(userId);
+      const expected = command.expectedVersion ?? null;
+      if ((current?.version ?? null) !== expected) {
+        throw new JwordError(
+          "CONFLICT",
+          "Preferences changed since you opened them. Refresh before saving.",
+          { reason: "STALE_VERSION", currentVersion: current?.version ?? 0 },
+        );
+      }
+      const { requestId: _r, expectedVersion: _v, ...after } = command;
+      const before = current
+        ? {
+            targetLevel: current.targetLevel,
+            employmentTarget: current.employmentTarget,
+            preferredStartMonth: current.preferredStartMonth,
+            preferredCities: current.preferredCities,
+            hideRemoteOnly: current.hideRemoteOnly,
+            preferredRoles: current.preferredRoles,
+            deemphasizedRoles: current.deemphasizedRoles,
+            maxPostingAgeDays: current.maxPostingAgeDays,
+          }
+        : null;
+      const noop =
+        before !== null &&
+        JSON.stringify(before, Object.keys(before).sort()) ===
+          JSON.stringify(after, Object.keys(before).sort());
+      let version = current?.version ?? 0;
+      let activityId: string | null = null;
+      let summary = "Search preferences unchanged";
+      if (!noop) {
+        version += 1;
+        this.searchPreferences.set(userId, {
+          ...after,
+          preferredCities: [...after.preferredCities] as SearchPreferences["preferredCities"],
+          version,
+          updatedAt: this.now(),
+        });
+        summary = current ? "Updated search preferences" : "Saved search preferences";
+        activityId = randomUUID();
+        this.preferenceActivities.push({
+          id: activityId,
+          userId,
+          actorType: ctx.actor.actorType,
+          version,
+          summary,
+          before,
+          after,
+        });
+      }
+      const result: PreferencesMutationResult = {
+        ok: true,
+        operation: op,
+        requestId: command.requestId,
+        replayed: false,
+        noop,
+        version,
+        activityId,
+        summary,
+      };
+      this.receipts.set(`${userId}:${command.requestId}`, {
+        operation: op,
+        fingerprint: fp,
+        result,
+      });
+      return result;
+    });
+  }
+
+  async listLeadsToEvaluate(
+    userId: string,
+    query: { key: string; afterId?: string; limit: number },
+  ): Promise<LeadEvaluationInput[]> {
+    return this.leads
+      .filter(
+        (l) =>
+          l.userId === userId &&
+          l.evaluationKey !== query.key &&
+          (!query.afterId || l.id > query.afterId),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .slice(0, query.limit)
+      .map((l) => ({
+        leadId: l.id,
+        inputRevision: l.inputRevision,
+        title: l.title,
+        location: l.location,
+        locations: l.locations,
+        workplaceType: l.workplaceType,
+        employmentType: l.employmentType,
+        description: l.description,
+      }));
+  }
+
+  /** Mirrors public.apply_lead_evaluations(): evaluation columns only, never versions. */
+  async applyLeadEvaluations(
+    ctx: MutationContext,
+    preferencesVersion: number,
+    evaluations: Array<{
+      leadId: string;
+      expectedInputRevision: number;
+      evaluation: StoredLeadEvaluation;
+    }>,
+    graduationDate: string | null,
+  ): Promise<{ updated: number }> {
+    const userId = ctx.actor.userId;
+    const current = this.searchPreferences.get(userId)?.version ?? 0;
+    if (current !== preferencesVersion) {
+      throw new JwordError("CONFLICT", "Preferences changed during re-evaluation.", {
+        reason: "STALE_PREFERENCES",
+        currentVersion: current,
+      });
+    }
+    if (((await this.getCandidateProfile(userId))?.graduationDate ?? null) !== graduationDate) {
+      throw new JwordError("CONFLICT", "Graduation date changed during re-evaluation.", {
+        reason: "STALE_PROFILE",
+      });
+    }
+    let updated = 0;
+    for (const { leadId, expectedInputRevision, evaluation } of evaluations) {
+      const lead = this.leads.find((l) => l.userId === userId && l.id === leadId);
+      if (!lead || lead.inputRevision !== expectedInputRevision) continue;
+      Object.assign(lead, this.evaluationFields(evaluation));
+      updated += 1;
+    }
+    return { updated };
   }
 }

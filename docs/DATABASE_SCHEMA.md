@@ -510,3 +510,31 @@ Review migration `20260925000300_lead_review_hardening.sql` adds the partial uni
 lock source before scan, matching stale recovery. The shared `jword.create_tracked_job` serializes
 creation per owner with a transaction advisory lock before checking duplicates. Function
 signatures, grants, and generated database types are unchanged.
+
+## Search preferences and lead evaluation (migration 20260927000100)
+
+[Decision 026](decisions/026-search-preferences-and-lead-filtering.md).
+
+- `search_preferences` (PK `user_id`): `target_level` (`NEW_GRAD`|`ANY`), `employment_target`
+  (`FULL_TIME`|`ANY`), `preferred_start_month` (first of month), `preferred_cities text[]` (≤10
+  catalog keys, ordered), `hide_remote_only`, `preferred_roles text[]`, `deemphasized_roles
+text[]`, `max_posting_age_days` (1-365 or null), `version`. Owner-only select; writes only
+  through `save_search_preferences(owner, actor, request_id, command)` (whole set, expected
+  version, receipt, audit).
+- `search_preference_activities`: append-only audit (`version`, `summary`, `metadata.before/after`).
+- `leads` gains `locations text[]`, `workplace_type`, `employment_type` (structured provider
+  fields) and the stored evaluation: `match_status` (`lead_match`: `ELIGIBLE`, `UNCERTAIN`,
+  `EXCLUDED`; null until first evaluated), `arrangement`, `city_rank`, `role_fit`, `evaluation`
+  jsonb, `evaluation_key`, `evaluated_at`. `lead_overview` appends these columns.
+- `lead_scans` gains `filtered_count` and `filtered_reasons` (new postings skipped by reason).
+- `record_lead_postings` (replaced, same signature) accepts per-posting `locations`,
+  `workplaceType`, `employmentType`, and `evaluation`; skips new `EXCLUDED` postings.
+- Hardening migration `20260927000200` adds `leads.input_revision`, incremented by a trigger only
+  when title, location(s), workplace/employment type, or description changes. It is separate from
+  the user's review `version` and is read from the base table for re-evaluation.
+- `apply_lead_evaluations(owner, {preferencesVersion, graduationDate, evaluations[]})` updates
+  evaluation columns only (≤500 per call). Each item contains `leadId`, `expectedInputRevision`,
+  and `evaluation`. Changed posting inputs are skipped; changed preferences or graduation date
+  fail with `STALE_PREFERENCES` or `STALE_PROFILE`. A shared per-owner transaction lock protects
+  settings reads/writes even before the first preference/profile row exists. Nested evaluation
+  JSON is validated against the labels and known finding/city/role values.

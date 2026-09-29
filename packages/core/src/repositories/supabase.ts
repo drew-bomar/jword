@@ -42,20 +42,34 @@ import type {
   WatchListQuery,
   WatchMutationResult,
 } from "../watchlist/types";
-import type { CollectedPosting } from "../collection/types";
+import type { EmploymentType, WorkplaceType } from "../collection/types";
+import type { LeadArrangement, LeadMatch, RoleFit } from "../leads/evaluate";
+import { parseLeadEvaluation } from "../leads/evaluation-schema";
+import type { SaveSearchPreferencesCommand } from "../preferences/schemas";
+import type { CityKey } from "../preferences/cities";
+import type {
+  EmploymentTarget,
+  PreferencesMutationResult,
+  RoleFamily,
+  SearchPreferences,
+  TargetLevel,
+} from "../preferences/types";
 import type {
   CreateApplicationFromLeadCommand,
   SetLeadReviewStatusCommand,
 } from "../leads/schemas";
 import type {
+  EvaluatedPosting,
   Lead,
   LeadCompany,
   LeadDetail,
+  LeadEvaluationInput,
   LeadListQuery,
   LeadMutationResult,
   LeadPostingCounts,
   LeadReviewStatus,
   LeadScanStart,
+  StoredLeadEvaluation,
 } from "../leads/types";
 import type { SupportedBoardProvider } from "../watchlist/boards";
 import { decodeCursor, encodeCursor, filterKeyFor } from "./cursor";
@@ -77,6 +91,7 @@ type ProfileRow = Database["public"]["Tables"]["candidate_profiles"]["Row"];
 type WatchRow = Database["public"]["Views"]["company_watch_overview"]["Row"];
 type WatchActivityRow = Database["public"]["Tables"]["company_watch_activities"]["Row"];
 type LeadRow = Database["public"]["Views"]["lead_overview"]["Row"];
+type PreferencesRow = Database["public"]["Tables"]["search_preferences"]["Row"];
 
 /** Postings per record_lead_postings call; the SQL function accepts at most 500. */
 const POSTING_CHUNK = 250;
@@ -244,6 +259,29 @@ function mapLead(row: LeadRow): Lead {
     reviewStatus: row.review_status!,
     applicationId: row.application_id,
     version: row.version!,
+    locations: row.locations ?? [],
+    workplaceType: (row.workplace_type as WorkplaceType | null) ?? null,
+    employmentType: (row.employment_type as EmploymentType | null) ?? null,
+    match: (row.match_status as LeadMatch | null) ?? null,
+    arrangement: (row.arrangement as LeadArrangement | null) ?? "UNKNOWN",
+    cityRank: row.city_rank,
+    roleFit: (row.role_fit as RoleFit | null) ?? "NEUTRAL",
+    evaluation: parseLeadEvaluation(row.evaluation),
+  };
+}
+
+function mapPreferences(row: PreferencesRow): SearchPreferences {
+  return {
+    targetLevel: row.target_level as TargetLevel,
+    employmentTarget: row.employment_target as EmploymentTarget,
+    preferredStartMonth: row.preferred_start_month?.slice(0, 7) ?? null,
+    preferredCities: row.preferred_cities as CityKey[],
+    hideRemoteOnly: row.hide_remote_only,
+    preferredRoles: row.preferred_roles as RoleFamily[],
+    deemphasizedRoles: row.deemphasized_roles as RoleFamily[],
+    maxPostingAgeDays: row.max_posting_age_days,
+    version: row.version,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -827,9 +865,15 @@ export class SupabaseTrackerRepository
   async recordLeadPostings(
     ctx: MutationContext,
     scanId: string,
-    postings: CollectedPosting[],
+    postings: EvaluatedPosting[],
   ): Promise<LeadPostingCounts> {
-    const totals: LeadPostingCounts = { created: 0, updated: 0, relisted: 0 };
+    const totals: LeadPostingCounts = {
+      created: 0,
+      updated: 0,
+      relisted: 0,
+      filtered: 0,
+      filteredReasons: {},
+    };
     for (let start = 0; start < postings.length; start += POSTING_CHUNK) {
       const { data, error } = await this.client.rpc("record_lead_postings", {
         p_owner_id: ctx.actor.userId,
@@ -839,10 +883,16 @@ export class SupabaseTrackerRepository
         } as unknown as Json,
       });
       if (error) throw mapDatabaseError(error, "record_lead_postings");
-      const raw = data as Record<string, number>;
-      totals.created += raw.created ?? 0;
-      totals.updated += raw.updated ?? 0;
-      totals.relisted += raw.relisted ?? 0;
+      const raw = data as Record<string, unknown>;
+      totals.created += Number(raw.created ?? 0);
+      totals.updated += Number(raw.updated ?? 0);
+      totals.relisted += Number(raw.relisted ?? 0);
+      totals.filtered += Number(raw.filtered ?? 0);
+      for (const [reason, count] of Object.entries(
+        (raw.filteredReasons ?? {}) as Record<string, number>,
+      )) {
+        totals.filteredReasons[reason] = (totals.filteredReasons[reason] ?? 0) + Number(count);
+      }
     }
     return totals;
   }
@@ -877,6 +927,17 @@ export class SupabaseTrackerRepository
     if (query.companyId) request = request.eq("company_id", query.companyId);
     if (query.reviewStatus) request = request.eq("review_status", query.reviewStatus);
     if (query.availability) request = request.eq("availability", query.availability);
+    if (query.match === "EXCLUDED") request = request.eq("match_status", "EXCLUDED");
+    if (query.match === "NOT_EXCLUDED")
+      request = request.or("match_status.is.null,match_status.neq.EXCLUDED");
+    if (query.arrangement === "REMOTE") request = request.eq("arrangement", "REMOTE");
+    if (query.arrangement === "NOT_REMOTE") request = request.neq("arrangement", "REMOTE");
+    if (query.postedOnOrAfter)
+      request = request.or(`posted_on.is.null,posted_on.gte.${query.postedOnOrAfter}`);
+    if (query.role === "PREFERRED") request = request.eq("role_fit", "PREFERRED");
+    if (query.role === "NOT_DEEMPHASIZED") request = request.neq("role_fit", "DEEMPHASIZED");
+    if (query.sort === "CITY")
+      request = request.order("city_rank", { ascending: true, nullsFirst: false });
     const { data, error } = await request
       .order("first_seen_at", { ascending: false })
       .order("lead_id", { ascending: true })
@@ -963,5 +1024,93 @@ export class SupabaseTrackerRepository
     });
     if (error) throw mapDatabaseError(error, "create_application_from_lead", true);
     return asLeadResult(data, "create_application_from_lead");
+  }
+
+  // ------------------------------------------------------ search preferences
+  async getSearchPreferences(userId: string): Promise<SearchPreferences | null> {
+    const { data, error } = await this.client
+      .from("search_preferences")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw mapDatabaseError(error, "get search preferences");
+    return data ? mapPreferences(data) : null;
+  }
+
+  async saveSearchPreferences(
+    ctx: MutationContext,
+    command: SaveSearchPreferencesCommand,
+  ): Promise<PreferencesMutationResult> {
+    const { requestId, ...rest } = command;
+    const { data, error } = await this.client.rpc("save_search_preferences", {
+      p_owner_id: ctx.actor.userId,
+      p_actor: ctx.actor.actorType,
+      p_request_id: requestId,
+      p_command: stripUndefined(rest) as Json,
+    });
+    if (error) throw mapDatabaseError(error, "save_search_preferences", true);
+    const raw = data as Record<string, unknown>;
+    return {
+      ok: true,
+      operation: String(raw.operation ?? "save_search_preferences"),
+      requestId: String(raw.requestId ?? requestId),
+      replayed: raw.replayed === true,
+      noop: raw.noop === true,
+      version: Number(raw.version),
+      activityId: typeof raw.activityId === "string" ? raw.activityId : null,
+      summary: String(raw.summary ?? ""),
+    };
+  }
+
+  async listLeadsToEvaluate(
+    userId: string,
+    query: { key: string; afterId?: string; limit: number },
+  ): Promise<LeadEvaluationInput[]> {
+    let request = this.client
+      .from("leads")
+      .select(
+        "id, input_revision, title, location, locations, workplace_type, employment_type, description",
+      )
+      .eq("user_id", userId)
+      .or(`evaluation_key.is.null,evaluation_key.neq.${query.key}`);
+    if (query.afterId) request = request.gt("id", query.afterId);
+    const { data, error } = await request.order("id", { ascending: true }).limit(query.limit);
+    if (error) throw mapDatabaseError(error, "list leads to evaluate");
+    return (data ?? []).map((row) => ({
+      leadId: row.id,
+      inputRevision: row.input_revision,
+      title: row.title,
+      location: row.location,
+      locations: row.locations ?? [],
+      workplaceType: (row.workplace_type as WorkplaceType | null) ?? null,
+      employmentType: (row.employment_type as EmploymentType | null) ?? null,
+      description: row.description,
+    }));
+  }
+
+  async applyLeadEvaluations(
+    ctx: MutationContext,
+    preferencesVersion: number,
+    evaluations: Array<{
+      leadId: string;
+      expectedInputRevision: number;
+      evaluation: StoredLeadEvaluation;
+    }>,
+    graduationDate: string | null,
+  ): Promise<{ updated: number }> {
+    let updated = 0;
+    for (let start = 0; start < evaluations.length; start += POSTING_CHUNK) {
+      const { data, error } = await this.client.rpc("apply_lead_evaluations", {
+        p_owner_id: ctx.actor.userId,
+        p_command: {
+          preferencesVersion,
+          graduationDate,
+          evaluations: evaluations.slice(start, start + POSTING_CHUNK),
+        } as unknown as Json,
+      });
+      if (error) throw mapDatabaseError(error, "apply_lead_evaluations");
+      updated += Number((data as Record<string, unknown>).updated ?? 0);
+    }
+    return { updated };
   }
 }

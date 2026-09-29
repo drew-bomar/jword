@@ -1,6 +1,12 @@
 import * as z from "zod";
 import { requestIdSchema, uuidSchema, versionSchema } from "../validation/schemas";
-import { LEAD_AVAILABILITIES, LEAD_REVIEW_STATUSES } from "./types";
+import {
+  LEAD_AVAILABILITIES,
+  LEAD_REVIEW_STATUSES,
+  LEAD_ROLE_FILTERS,
+  LEAD_SORTS,
+  LEAD_VIEWS,
+} from "./types";
 
 export const LEADS_DEFAULT_LIMIT = 50;
 export const LEADS_MAX_LIMIT = 200;
@@ -16,6 +22,10 @@ export const listLeadsSchema = z.strictObject({
   companyId: uuidSchema.optional(),
   reviewStatus: z.enum(LEAD_REVIEW_STATUSES, { error: "Unknown review status." }).optional(),
   availability: z.enum(LEAD_AVAILABILITIES, { error: "Unknown availability." }).optional(),
+  /** Defaults to RECOMMENDED (decision 026). */
+  view: z.enum(LEAD_VIEWS, { error: "Unknown view." }).optional(),
+  sort: z.enum(LEAD_SORTS, { error: "Unknown sort." }).optional(),
+  role: z.enum(LEAD_ROLE_FILTERS, { error: "Unknown role filter." }).optional(),
   limit: z.number().int().min(1).max(LEADS_MAX_LIMIT).optional(),
   cursor: z.string().max(200).optional(),
 });

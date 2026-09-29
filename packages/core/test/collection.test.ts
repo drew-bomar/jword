@@ -219,8 +219,78 @@ describe("Ashby collection", () => {
         jobUrl: "https://jobs.ashbyhq.com/ramp/34413f8d",
         description: "About Ramp",
         postedOn: "2026-04-07",
+        workplaceType: null,
+        employmentType: null,
       },
     ]);
+  });
+
+  it("reads structured workplace type, employment type, and secondary locations", async () => {
+    const { fn } = fakeFetch(() =>
+      json({
+        jobs: [
+          {
+            id: "a1",
+            title: "Backend Engineer",
+            location: "New York, NY (HQ)",
+            secondaryLocations: [
+              { location: "San Francisco, CA", address: {} },
+              { location: "New York, NY (HQ)" },
+            ],
+            // isRemote is ignored: Ashby sets it on hybrid roles too.
+            isRemote: true,
+            workplaceType: "Hybrid",
+            employmentType: "FullTime",
+          },
+          { id: "a2", title: "Intern", employmentType: "Intern", workplaceType: "OnSite" },
+          // Unexpected shapes never invalidate the posting.
+          { id: "a3", title: "Odd", workplaceType: 7, secondaryLocations: "nope" },
+        ],
+      }),
+    );
+    const result = await createPublicJobCollector({ fetch: fn }).collect("ASHBY", "ramp");
+    expect(result.status).toBe("complete");
+    expect(result.postings[0]).toMatchObject({
+      locations: ["New York, NY (HQ)", "San Francisco, CA"],
+      workplaceType: "HYBRID",
+      employmentType: "FULL_TIME",
+    });
+    expect(result.postings[1]).toMatchObject({ workplaceType: "ONSITE", employmentType: "INTERN" });
+    expect(result.postings[1]).not.toHaveProperty("locations");
+    expect(result.postings[2]).toMatchObject({ workplaceType: null, employmentType: null });
+  });
+});
+
+describe("Lever structured fields", () => {
+  it("normalizes commitment text, workplace type, and all locations", async () => {
+    const { fn } = fakeFetch(() =>
+      json([
+        {
+          id: "l1",
+          text: "Software Engineer",
+          workplaceType: "onsite",
+          categories: {
+            location: "Palo Alto, CA",
+            commitment: "Full-time",
+            allLocations: ["Palo Alto, CA", "New York, NY"],
+          },
+        },
+        {
+          id: "l2",
+          text: "Engineer",
+          workplaceType: "unspecified",
+          categories: { commitment: "Internship" },
+        },
+        { id: "l3", text: "Engineer", categories: { commitment: "Fixed-Term" } },
+      ]),
+    );
+    const result = await createPublicJobCollector({ fetch: fn }).collect("LEVER", "acme");
+    expect(result.postings.map((p) => [p.workplaceType, p.employmentType])).toEqual([
+      ["ONSITE", "FULL_TIME"],
+      [null, "INTERN"],
+      [null, "TEMPORARY"],
+    ]);
+    expect(result.postings[0]!.locations).toEqual(["Palo Alto, CA", "New York, NY"]);
   });
 });
 
