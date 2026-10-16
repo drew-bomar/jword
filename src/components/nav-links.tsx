@@ -6,20 +6,22 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/", label: "Applications" },
-  { href: "/watchlist", label: "Watchlist" },
-  { href: "/leads", label: "Leads" },
+  { href: "/watchlist", label: "Watchlist", discovery: true },
+  { href: "/leads", label: "Leads", discovery: true },
   { href: "/import", label: "Import" },
   { href: "/settings/profile", label: "Profile" },
 ];
 
-export function NavLinks() {
+/** `discovery` comes from the server's canUseDiscovery (decision 027); hiding is not the gate. */
+export function NavLinks({ discovery }: { discovery: boolean }) {
   const pathname = usePathname();
+  const links = LINKS.filter((link) => discovery || !link.discovery);
   return (
     <nav
       aria-label="Primary"
       className="flex min-w-0 items-center gap-0.5 overflow-x-auto text-sm sm:gap-1"
     >
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active =
           link.href === "/"
             ? pathname === "/" || pathname.startsWith("/applications")

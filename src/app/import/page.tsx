@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Import CSV" };
 export default async function ImportPage() {
   const session = await requirePageSession();
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="mx-auto max-w-5xl space-y-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Import from CSV</h1>

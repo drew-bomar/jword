@@ -61,7 +61,7 @@ export default async function ApplicationsPage({ searchParams }: PageProps<"/">)
   const hasFilters = Boolean(filters.q || filters.status || filters.priority);
 
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

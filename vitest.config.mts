@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Resolve the app's "@/..." imports so server modules under src/ can be unit tested.
+  resolve: { tsconfigPaths: true },
   test: {
     projects: [
       {

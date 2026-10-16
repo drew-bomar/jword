@@ -3,9 +3,17 @@ import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/server/actions/auth";
+import { canUseDiscovery, type WebSession } from "@/server/auth/session";
 import { NavLinks } from "./nav-links";
 
-export function AppShell({ children, email }: { children: React.ReactNode; email: string | null }) {
+export function AppShell({
+  children,
+  session,
+}: {
+  children: React.ReactNode;
+  session: WebSession;
+}) {
+  const { email } = session;
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 border-b backdrop-blur">
@@ -13,7 +21,7 @@ export function AppShell({ children, email }: { children: React.ReactNode; email
           <Link href="/" className="font-semibold tracking-tight">
             jword
           </Link>
-          <NavLinks />
+          <NavLinks discovery={canUseDiscovery(session)} />
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {email ? (
               <span className="text-muted-foreground hidden text-xs sm:inline">{email}</span>

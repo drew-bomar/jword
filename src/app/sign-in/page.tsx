@@ -13,7 +13,8 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
         <div className="space-y-1">
           <h1 className="text-xl font-semibold tracking-tight">Sign in to jword</h1>
           <p className="text-muted-foreground text-sm">
-            Enter the owner email. You will receive a one-time code and a magic link.
+            Enter your email and we will send a one-time code. New here? The same code creates your
+            account.
           </p>
         </div>
         <SignInForm

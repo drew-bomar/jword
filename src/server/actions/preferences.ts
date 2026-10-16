@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { PreferencesMutationResult } from "@jword/core/browser";
-import { requireSession } from "@/server/auth/session";
+import { requireDiscoverySession } from "@/server/auth/session";
 import { servicesFor } from "@/server/services";
 import { runAction, type ActionResult } from "./result";
 
@@ -15,7 +15,7 @@ export async function saveSearchPreferencesAction(
   input: unknown,
 ): Promise<ActionResult<PreferencesMutationResult>> {
   return runAction(async () => {
-    const session = await requireSession();
+    const session = await requireDiscoverySession();
     const result = await servicesFor(session).saveSearchPreferences(input, session.actor);
     revalidatePath("/settings/preferences");
     revalidatePath("/leads");

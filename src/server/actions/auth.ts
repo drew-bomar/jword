@@ -22,7 +22,10 @@ async function siteOrigin(): Promise<string> {
   return `${proto}://${host}`;
 }
 
-/** Sends a one-time code and magic link. Only existing accounts can sign in (no self-signup). */
+/**
+ * Sends a one-time code and magic link. A new address gets an account on first use (open sign-up,
+ * decision 027); new and returning addresses see the same reply.
+ */
 export async function requestSignInCode(input: {
   email: string;
 }): Promise<ActionResult<{ email: string }>> {
@@ -39,13 +42,14 @@ export async function requestSignInCode(input: {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,
-    options: { shouldCreateUser: false, emailRedirectTo: `${await siteOrigin()}/auth/callback` },
+    options: { shouldCreateUser: true, emailRedirectTo: `${await siteOrigin()}/auth/callback` },
   });
   if (error) {
-    // Do not reveal whether the account exists beyond what Supabase already returns.
-    const message = /signups? not allowed|not found/i.test(error.message)
-      ? "That email is not registered as the owner of this tracker."
-      : "Could not send a sign-in email. Try again in a moment.";
+    // One neutral message: it must not reveal whether the address already has an account.
+    const message =
+      error.status === 429
+        ? "Too many codes were requested. Wait a minute, then try again."
+        : "Could not send a sign-in email. Try again in a moment.";
     return { ok: false, error: { code: "UNAUTHENTICATED", message } };
   }
   return { ok: true, data: { email: parsed.data.email } };
