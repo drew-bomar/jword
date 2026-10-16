@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build `jword` as a small, dependable job-application tracker for one user. The owner wants the coding agent to handle implementation while teaching the important system-design and code-review concepts along the way.
+Build `jword` as a small, dependable job-application tracker. Anyone can sign up for Applications, Import, Profile, and the Chrome extension's job capture; discovery (Watchlist, Leads, job checks, search preferences) and the MCP server are for the owner only (decision 027). The owner wants the coding agent to handle implementation while teaching the important system-design and code-review concepts along the way.
 
 The source of truth is, in order:
 
@@ -51,6 +51,7 @@ For architecture-heavy work, pause at the ticket's learning checkpoint before cl
 - An MCP mutation of an existing record must accept its stable record ID; creation instead uses a request ID and returns the new record ID. Natural-language matching happens through read tools first; never guess among multiple matches.
 - Status changes and user-visible mutations must create activity records atomically with the primary change.
 - Browser code must never receive service-role credentials or other server secrets.
+- Owner-only discovery is decided only by `canUseDiscovery` in `src/server/auth/session.ts`. Every discovery page, Server Action, Route Handler, and extension endpoint must go through `requireDiscoverySession` / `requireDiscoveryPageSession`; hiding a link is not access control.
 - Keep provider/model logic out of v1. Codex is the interpreter and invokes local jword tools through MCP; jword does not embed an LLM API.
 
 ## Intended stack

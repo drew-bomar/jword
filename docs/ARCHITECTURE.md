@@ -347,7 +347,7 @@ scheduled.
 
 ```mermaid
 flowchart LR
-    W["/watchlist (client form)"] --> A["Server Action: requireSession + owner lock"]
+    W["/watchlist (client form)"] --> A["Server Action: requireDiscoverySession (owner only)"]
     C["Coding agent"] --> T["MCP watchlist tools (actor CODEX)"]
     A --> S["createWatchlistServices (Zod)"]
     T --> S

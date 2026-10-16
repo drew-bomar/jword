@@ -614,7 +614,8 @@ ownership, so a UUID belonging to another user yields `NOT_FOUND`.
 ## Security boundaries
 
 - Browser: anon key only, session cookie, RLS on every table, no table write grants at all.
-- Next.js server: verifies the session per action; optional `JWORD_OWNER_USER_ID` lock; never
+- Next.js server: verifies the session per action; any account may use the tracker, and
+  discovery entry points also require `JWORD_OWNER_USER_ID` (decision 027); never
   serializes secrets to client components (`@jword/core/browser` is the only core entry the client uses).
 - Database: `security definer` wrappers with fixed `search_path` in `public`, helpers in the private
   `jword` schema, execute revoked from `anon`/`public`, explicit owner checks inside every function.
