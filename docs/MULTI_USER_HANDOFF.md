@@ -151,4 +151,11 @@ version; note it in the ADR as a known limitation.
   5. Supabase → Authentication → URL Configuration: Site URL `https://<domain>`; redirect URLs
      `https://<domain>/auth/callback` and `https://jword.vercel.app/auth/callback`.
   6. Vercel: add the domain to the project. Keep `JWORD_OWNER_USER_ID` (it now grants discovery).
-- Next: slice 3 (extension) needs the production domain.
+- Slice 3 (extension) built with `https://jword.work` as the default: `/api/extension/session`,
+  overlay account line and discovery-gated watch, `JWORD_EXTENSION_IDS`, release zips
+  (`ext:build`), `/extension` install page with download, nav "Extension" link.
+- Owner, for slice 3: set `JWORD_EXTENSION_IDS=bnjlbmpmikpggohfhmfpddeeokbjpkbk` in Vercel (or keep
+  `JWORD_EXTENSION_ID`); after the store item exists, append its id. Web Store: $5 developer
+  account, upload `packages/extension/release/jword-capture-<v>-store.zip`, visibility Unlisted,
+  privacy policy URL `https://jword.work/privacy` (slice 4).
+- Next: slice 4 (privacy page, account deletion notes).

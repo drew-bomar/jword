@@ -75,11 +75,21 @@ domain. Supabase rate-limits code requests per address; CAPTCHA is added only if
 
 ### Extension for other people
 
-Specified in the extension slice of the handoff and recorded here when built: the production
-origin becomes the default server and a fixed host permission; the server accepts a short list of
-extension ids (`JWORD_EXTENSION_IDS`, keeping `JWORD_EXTENSION_ID`) so the unpacked zip and a
-Chrome Web Store build both work; signed-out and discovery-unavailable states are shown in the
-overlay.
+- **Default server `https://jword.work`** with a fixed host permission, so a new user installs,
+  signs in, and captures with no Options step. Localhost stays a fixed permission for development;
+  other addresses remain an optional, per-site grant from Options.
+- **Distribution in two builds of one bundle.** The Developer-mode zip keeps the manifest `key`
+  (pinned id `bnjlbmpmikpggohfhmfpddeeokbjpkbk`) and is served by jword at
+  `/downloads/jword-capture.zip` with install steps at `/extension`; the root build runs
+  `ext:build` so each deploy serves a current zip. The store zip drops the `key` and gets a
+  store-assigned id. Unlisted Chrome Web Store listing comes later.
+- **Several allowed ids.** `JWORD_EXTENSION_IDS` (comma list, merged with the older
+  `JWORD_EXTENSION_ID`; malformed ids dropped) feeds the existing `Origin` check.
+- **The overlay asks the server who it saves for.** `POST /api/extension/session` returns only
+  `{ email, discovery }`. The overlay shows "Saving to <email>" and offers "Watch this company"
+  only when `discovery` is true; it asks again when the tab becomes visible (after signing in
+  elsewhere). Signed out, the existing panel prompt links to sign-in, which now also creates
+  accounts. The server still enforces the gate on the three watch endpoints.
 
 ### Privacy and accounts
 
