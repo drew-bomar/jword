@@ -158,4 +158,12 @@ version; note it in the ADR as a known limitation.
   `JWORD_EXTENSION_ID`); after the store item exists, append its id. Web Store: $5 developer
   account, upload `packages/extension/release/jword-capture-<v>-store.zip`, visibility Unlisted,
   privacy policy URL `https://jword.work/privacy` (slice 4).
-- Next: slice 4 (privacy page, account deletion notes).
+- Slice 4 built: public `/privacy` (linked from sign-in and `/extension`; contact
+  `privacy@jword.work`), integration test `tests/integration/account-deletion.test.ts` proving that
+  deleting the auth user removes rows from every `user_id` table and nothing of other users.
+- Owner runbook, account deletion request: confirm the request came from the account's own
+  address, then Supabase → Authentication → Users → find the email → Delete user. Everything the
+  user owns is removed by cascade; there is no undo. A self-service "Delete my account" is
+  deferred.
+- Owner, for slice 4: Cloudflare → jword.work → Email Routing → forward `privacy@jword.work` to your
+  inbox (free; receives only, so it does not conflict with Resend sending).
