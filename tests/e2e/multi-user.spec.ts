@@ -54,7 +54,7 @@ test.describe("a public user", () => {
   test("sees only Applications, Import, and Profile; discovery pages are not found", async ({
     page,
   }) => {
-    expect(await navLabels(page)).toEqual(["Applications", "Import", "Profile"]);
+    expect(await navLabels(page)).toEqual(["Applications", "Import", "Profile", "Extension"]);
     for (const path of DISCOVERY_PAGES) {
       // A soft 404: the root loading.tsx streams first, so the status stays 200 and Next adds
       // noindex. What matters is that the not-found page renders instead of discovery data.
@@ -97,6 +97,33 @@ test.describe("a public user", () => {
     );
     expect((await found.json()).data.items).toHaveLength(1);
   });
+
+  test("the extension session says who is signed in, without discovery", async ({
+    page,
+    user,
+  }, info) => {
+    test.skip(info.project.name !== "desktop-chromium", "API checks do not depend on viewport");
+    const response = await page.request.post("/api/extension/session", json({}));
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { email: user.email, discovery: false },
+    });
+  });
+
+  test("can download the extension from the install page", async ({ page }) => {
+    await page.goto("/extension");
+    await expect(page.getByRole("heading", { name: "Chrome extension" })).toBeVisible();
+    const download = await page.request.get("/downloads/jword-capture.zip");
+    expect(download.status()).toBe(200);
+    // A zip file starts with "PK".
+    expect((await download.body()).subarray(0, 2).toString()).toBe("PK");
+  });
+});
+
+test("the discovery user's extension session offers discovery", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop-chromium", "API checks do not depend on viewport");
+  const response = await page.request.post("/api/extension/session", json({}));
+  expect((await response.json()).data.discovery).toBe(true);
 });
 
 test("the discovery user still sees Watchlist and Leads", async ({ page }) => {
@@ -106,6 +133,7 @@ test("the discovery user still sees Watchlist and Leads", async ({ page }) => {
     "Leads",
     "Import",
     "Profile",
+    "Extension",
   ]);
   for (const path of DISCOVERY_PAGES) {
     await page.goto(path);
@@ -129,7 +157,7 @@ test("a new email signs up with the emailed code and lands on an empty tracker",
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByText("No applications yet")).toBeVisible();
-    expect(await navLabels(page)).toEqual(["Applications", "Import", "Profile"]);
+    expect(await navLabels(page)).toEqual(["Applications", "Import", "Profile", "Extension"]);
   } finally {
     await page.close();
     const { data } = await admin().auth.admin.listUsers({ perPage: 1000 });

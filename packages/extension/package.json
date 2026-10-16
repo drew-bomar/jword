@@ -20,6 +20,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "esbuild": "0.28.2",
+    "fflate": "0.8.2",
     "happy-dom": "^20.0.0",
     "postcss": "8.5.28",
     "typescript": "^5",

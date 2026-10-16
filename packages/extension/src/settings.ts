@@ -1,6 +1,10 @@
-export const DEFAULT_JWORD_URL = "http://localhost:3200";
+/**
+ * The public jword (decision 027). The manifest grants its host permission up front, so a new
+ * user only installs and signs in. Options can switch to http://localhost:3200 for development.
+ */
+export const DEFAULT_JWORD_URL = "https://jword.work";
 
-/** The jword origin (scheme + host + port) the overlay talks to, e.g. http://localhost:3200. */
+/** The jword origin (scheme + host + port) the overlay talks to, e.g. https://jword.work. */
 export async function getJwordOrigin(): Promise<string> {
   const stored = await chrome.storage.sync.get("jwordUrl");
   return (

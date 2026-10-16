@@ -241,6 +241,28 @@ test.describe("browser extension overlay", () => {
     await expect(owner.getByTestId("application-row")).toHaveCount(0);
   });
 
+  test("a public user captures under their own account and is not offered watching", async () => {
+    const visitor = await createUser({ discovery: false });
+    try {
+      await signIn(await context.newPage(), visitor.email);
+      // The same board page that offers "Watch this company" to the discovery user.
+      await context.route(JOB_PAGE, (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: `<html><head><title>Careers</title><meta property="og:site_name" content="Acme">
+          <link rel="canonical" href="https://wd5.myworkdaysite.com/recruiting/acme/External">
+          </head><body><h1>Open jobs</h1></body></html>`,
+        }),
+      );
+      const { overlay } = await capture();
+      await expect(overlay.getByTestId("overlay-account")).toHaveText(`Saving to ${visitor.email}`);
+      await expect(overlay.getByLabel("Company *")).toHaveValue("Acme");
+      await expect(overlay.getByRole("button", { name: "Watch this company" })).toHaveCount(0);
+    } finally {
+      await deleteUser(visitor.id);
+    }
+  });
+
   test("closing the overlay restores the page", async () => {
     const { job, overlay } = await capture();
     await overlay.getByRole("button", { name: "Close jword capture" }).click();

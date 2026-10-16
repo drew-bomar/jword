@@ -401,7 +401,10 @@ export function CaptureReview({
         <Alert role="alert">
           <AlertTitle>Signed out of jword</AlertTitle>
           <AlertDescription>
-            <p>Sign in to jword in a tab, then try again. This posting is kept.</p>
+            <p>
+              Sign in to jword in a tab (a new email creates an account), then try again. This
+              posting is kept.
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button asChild size="sm">
                 <a href={`${jwordUrl}/sign-in`} target="_blank" rel="noopener">

@@ -16,7 +16,7 @@ export function extensionEndpoint<T>(
 ): (request: Request) => Promise<Response> {
   const authenticate = options.discovery ? requireDiscoverySession : requireSession;
   return async function POST(request: Request) {
-    const refused = checkExtensionRequest(request.headers, serverEnv().extensionId);
+    const refused = checkExtensionRequest(request.headers, serverEnv().extensionIds);
     if (refused)
       return reply({ ok: false, error: { code: refused.code, message: refused.message } });
 

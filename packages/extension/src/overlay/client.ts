@@ -56,6 +56,16 @@ export function backgroundApi(nonce: string): CaptureApi {
   };
 }
 
+/** Who the overlay saves for, and whether watch capture is offered (decision 027). */
+export interface ExtensionSession {
+  email: string | null;
+  discovery: boolean;
+}
+
+export function getSession(nonce: string): Promise<ActionResult<ExtensionSession>> {
+  return call<ExtensionSession>(nonce, "getSession")({});
+}
+
 export function backgroundWatchApi(nonce: string): WatchCaptureApi {
   return {
     searchCompanies: call<CompanyOption[]>(nonce, "searchCompanies"),

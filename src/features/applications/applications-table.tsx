@@ -29,7 +29,7 @@ export function ApplicationsTable({
       <EmptyState
         icon={<InboxIcon className="size-6" aria-hidden />}
         title="No applications yet"
-        description="Add your first application, or import your existing spreadsheet as CSV."
+        description="Add your first application, import your spreadsheet as CSV, or install the Chrome extension to save jobs straight from postings."
         actions={
           <>
             <Button asChild>
@@ -37,6 +37,9 @@ export function ApplicationsTable({
             </Button>
             <Button asChild variant="outline">
               <Link href="/import">Import CSV</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/extension">Get the extension</Link>
             </Button>
           </>
         }

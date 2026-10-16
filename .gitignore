@@ -43,3 +43,7 @@ supabase/.env
 .mcp.json
 
 .next-e2e/
+
+# extension release zips (built by pnpm ext:build)
+packages/extension/release/
+public/downloads/

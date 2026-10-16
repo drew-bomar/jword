@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/leads", label: "Leads", discovery: true },
   { href: "/import", label: "Import" },
   { href: "/settings/profile", label: "Profile" },
+  { href: "/extension", label: "Extension" },
 ];
 
 /** `discovery` comes from the server's canUseDiscovery (decision 027); hiding is not the gate. */

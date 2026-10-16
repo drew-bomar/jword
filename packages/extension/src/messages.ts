@@ -8,6 +8,7 @@ import type { CapturedPosting } from "@jword/core/browser";
 
 /** Overlay operation -> jword endpoint under /api/extension/. The only calls that exist. */
 export const API_ENDPOINTS = {
+  getSession: "session",
   searchCompanies: "search-companies",
   verifyBoards: "verify-boards",
   addWatch: "add-watch",
