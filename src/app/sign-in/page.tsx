@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { SignInForm } from "@/features/auth/sign-in-form";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -23,6 +24,11 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
             linkError ? "That sign-in link is invalid or expired. Request a new one." : null
           }
         />
+        <p className="text-muted-foreground text-xs">
+          <Link href="/privacy" className="underline">
+            Privacy policy
+          </Link>
+        </p>
       </div>
     </main>
   );

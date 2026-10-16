@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { DownloadIcon } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,11 @@ export default async function ExtensionPage() {
             Chrome may remind you that a developer-mode extension is installed. To update, download
             again, replace the folder, and click the reload icon on the extension in
             chrome://extensions.
+          </p>
+          <p>
+            <Link href="/privacy" className="underline">
+              Privacy policy
+            </Link>
           </p>
         </div>
       </div>
