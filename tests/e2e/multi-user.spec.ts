@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import type { Page } from "@playwright/test";
+import { request as playwrightRequest, type Page } from "@playwright/test";
 import { createApplication, expect, test } from "./helpers/auth";
 import { EXTENSION_ORIGIN } from "./helpers/extension";
 
@@ -33,6 +33,7 @@ interface Mail {
   /** The sign-in link's path and query, e.g. /auth/callback?token_hash=…&type=email. */
   linkPath: string;
   linkOrigin: string;
+  html: string;
 }
 
 /** The newest Mailpit message to `email` that is not `after`. */
@@ -48,7 +49,7 @@ async function mailFor(page: Page, email: string, after?: string): Promise<Mail>
       const message = await (await page.request.get(`${MAILPIT}/api/v1/message/${id}`)).json();
       const html: string = message.HTML ?? "";
       const code = /\b(\d{6})\b/.exec(message.Text ?? html)?.[1];
-      const href = /href="([^"]+)"/.exec(html)?.[1]?.replaceAll("&amp;", "&");
+      const href = /<a href="([^"]+)"/.exec(html)?.[1]?.replaceAll("&amp;", "&");
       if (!code || !href) return undefined;
       const url = new URL(href);
       mail = {
@@ -57,6 +58,7 @@ async function mailFor(page: Page, email: string, after?: string): Promise<Mail>
         code,
         linkPath: url.pathname + url.search,
         linkOrigin: url.origin,
+        html,
       };
       return mail;
     })
@@ -207,6 +209,10 @@ test("the emailed link signs in new and returning users on jword's own callback"
     // The link targets the site (Supabase Site URL), never the supabase.co verify endpoint.
     expect(welcome.linkOrigin).toBe("http://localhost:3200");
     expect(welcome.linkPath).toMatch(/^\/auth\/callback\?token_hash=[^&]+&type=email$/);
+    // Both templates lead with the hosted logo, sized and with alt text for blocked images.
+    const logo = /<img[^>]*src="http:\/\/localhost:3200\/email\/jword-logo\.png"[^>]*>/;
+    expect(welcome.html).toMatch(logo);
+    expect(welcome.html).toMatch(/alt="Jword"/);
     await page.goto(welcome.linkPath);
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByText("No applications yet")).toBeVisible();
@@ -217,6 +223,7 @@ test("the emailed link signs in new and returning users on jword's own callback"
     await requestCode(page, email);
     const again = await mailFor(page, email, welcome.id);
     expect(again.subject).toBe("Your jword sign-in code");
+    expect(again.html).toMatch(/<img[^>]*\/email\/jword-logo\.png[^>]*alt="Jword"/);
     await page.goto(again.linkPath);
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "Applications", exact: true })).toBeVisible();
@@ -226,4 +233,14 @@ test("the emailed link signs in new and returning users on jword's own callback"
     const user = data.users.find((u) => u.email === email);
     if (user) await admin().auth.admin.deleteUser(user.id);
   }
+});
+
+test("the email logo is public, so mail clients can load it without a jword session", async ({
+  baseURL,
+}) => {
+  const anonymous = await playwrightRequest.newContext({ baseURL });
+  const response = await anonymous.get("/email/jword-logo.png", { maxRedirects: 0 });
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toBe("image/png");
+  await anonymous.dispose();
 });
