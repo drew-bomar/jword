@@ -19,19 +19,29 @@ export function extensionOrigin(extensionId: string | null): string | null {
   return extensionId && EXTENSION_ID.test(extensionId) ? `chrome-extension://${extensionId}` : null;
 }
 
+/**
+ * The allowed extension ids from JWORD_EXTENSION_IDS (comma list) and the older single
+ * JWORD_EXTENSION_ID (decision 027): the unpacked/zip build and the Chrome Web Store build have
+ * different ids. Malformed entries are dropped, so a typo cannot widen the allowlist.
+ */
+export function parseExtensionIds(...values: (string | undefined)[]): string[] {
+  const ids = values.flatMap((value) => (value ?? "").split(",")).map((id) => id.trim());
+  return [...new Set(ids.filter((id) => EXTENSION_ID.test(id)))];
+}
+
 /** Returns why the request must be refused, or null when it may proceed to the session check. */
 export function checkExtensionRequest(
   headers: Headers,
-  extensionId: string | null,
+  extensionIds: readonly string[],
 ): JwordError | null {
-  const expected = extensionOrigin(extensionId);
-  if (!expected) {
+  const allowed = extensionIds.map(extensionOrigin).filter((origin) => origin !== null);
+  if (allowed.length === 0) {
     return new JwordError(
       "FORBIDDEN",
-      "The capture API is not enabled on this jword server (JWORD_EXTENSION_ID is not set).",
+      "The capture API is not enabled on this jword server (JWORD_EXTENSION_IDS is not set).",
     );
   }
-  if (headers.get("origin") !== expected) {
+  if (!allowed.includes(headers.get("origin") ?? "")) {
     return new JwordError("FORBIDDEN", "Only the jword capture extension may call this API.");
   }
   if (!headers.get("content-type")?.toLowerCase().startsWith("application/json")) {

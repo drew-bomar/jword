@@ -2,20 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { PreferencesForm } from "@/features/preferences/preferences-form";
-import { requirePageSession } from "@/server/auth/session";
+import { requireDiscoveryPageSession } from "@/server/auth/session";
 import { servicesFor } from "@/server/services";
 
 export const metadata: Metadata = { title: "Search preferences" };
 
 export default async function PreferencesPage() {
-  const session = await requirePageSession();
+  const session = await requireDiscoveryPageSession();
   const services = servicesFor(session);
   const [preferences, profile] = await Promise.all([
     services.getSearchPreferences(session.actor),
     services.getCandidateProfile(session.actor),
   ]);
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">Search preferences</h1>

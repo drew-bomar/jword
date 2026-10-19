@@ -10,7 +10,7 @@ import {
   type WatchStateFilter,
 } from "@/features/watchlist/watch-filters";
 import { WatchlistTable } from "@/features/watchlist/watchlist-table";
-import { requirePageSession } from "@/server/auth/session";
+import { requireDiscoveryPageSession } from "@/server/auth/session";
 import { servicesFor } from "@/server/services";
 
 export const metadata: Metadata = { title: "Watchlist" };
@@ -29,7 +29,7 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Wa
 }
 
 export default async function WatchlistPage({ searchParams }: PageProps<"/watchlist">) {
-  const session = await requirePageSession();
+  const session = await requireDiscoveryPageSession();
   const params = await searchParams;
   const filters = parseFilters(params);
   const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
@@ -47,7 +47,7 @@ export default async function WatchlistPage({ searchParams }: PageProps<"/watchl
   const hasFilters = Boolean(filters.q || filters.state !== "all" || filters.provider);
 
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

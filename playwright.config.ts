@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_DISCOVERY_USER_ID } from "./tests/e2e/helpers/discovery";
 import { EXTENSION_ID } from "./tests/e2e/helpers/extension";
 import { loadTestEnv } from "./tests/test-env";
 
@@ -32,7 +33,7 @@ export default defineConfig({
   webServer: {
     env: {
       JWORD_E2E: "1",
-      JWORD_OWNER_USER_ID: "",
+      JWORD_OWNER_USER_ID: E2E_DISCOVERY_USER_ID,
       JWORD_EXTENSION_ID: EXTENSION_ID,
       // Board discovery answers from fixtures; browser tests never call the real job boards.
       JWORD_BOARD_DIRECTORY: "fixtures",

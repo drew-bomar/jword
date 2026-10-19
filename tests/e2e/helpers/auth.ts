@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { loadTestEnv } from "../../test-env";
+import { E2E_DISCOVERY_USER_ID } from "./discovery";
 
 loadTestEnv();
 
@@ -20,9 +21,16 @@ export interface E2EUser {
   email: string;
 }
 
-export async function createUser(): Promise<E2EUser> {
+/** By default the user has discovery features (the server's owner id); see ./discovery.ts. */
+export async function createUser({ discovery = true } = {}): Promise<E2EUser> {
   const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
-  const { data, error } = await admin().auth.admin.createUser({ email, email_confirm: true });
+  // A test that crashed before cleanup may have left the fixed-id user behind.
+  if (discovery) await admin().auth.admin.deleteUser(E2E_DISCOVERY_USER_ID);
+  const { data, error } = await admin().auth.admin.createUser({
+    email,
+    email_confirm: true,
+    ...(discovery ? { id: E2E_DISCOVERY_USER_ID } : {}),
+  });
   if (error) throw error;
   return { id: data.user.id, email };
 }
@@ -70,10 +78,14 @@ export function formatDate(iso: string): string {
   }).format(new Date(Date.UTC(y!, m! - 1, d!, 12)));
 }
 
-/** Fixture: each test gets a fresh user and an authenticated page. */
-export const test = base.extend<{ user: E2EUser; page: Page }>({
-  user: async ({}, use) => {
-    const user = await createUser();
+/**
+ * Fixture: each test gets a fresh user and an authenticated page. `test.use({ discovery: false })`
+ * makes that user a public user without watchlist/Leads/preferences (decision 027).
+ */
+export const test = base.extend<{ discovery: boolean; user: E2EUser; page: Page }>({
+  discovery: [true, { option: true }],
+  user: async ({ discovery }, use) => {
+    const user = await createUser({ discovery });
     await use(user);
     await deleteUser(user.id);
   },

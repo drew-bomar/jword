@@ -10,7 +10,7 @@ export default async function ProfilePage() {
   const session = await requirePageSession();
   const profile = await servicesFor(session).getCandidateProfile(session.actor);
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Candidate profile</h1>

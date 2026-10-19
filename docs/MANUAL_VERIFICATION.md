@@ -32,8 +32,11 @@ Local emails land in Mailpit at http://127.0.0.1:54324.
     An invalid URL shows an inline error.
 11. **Mobile.** Narrow the window below 768px: rows become cards; status and priority are still
     editable; all forms remain usable.
-12. **Forbidden.** Set `JWORD_OWNER_USER_ID` to a different user's id and restart: the app sends the
-    signed-in user to `/forbidden` with a sign-out button.
+12. **Second user (decision 027).** Sign out, sign in with a new email (local: read the code in
+    Mailpit at http://127.0.0.1:54324). The account is created on first use; the nav shows only
+    Applications, Import, and Profile; `/watchlist`, `/leads`, and `/settings/preferences` show
+    "Not found"; none of the owner's applications are listed. Signing back in as the owner still
+    shows Watchlist and Leads.
 
 ## Delete an application (decision 025)
 

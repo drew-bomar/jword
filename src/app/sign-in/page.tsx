@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { SignInForm } from "@/features/auth/sign-in-form";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -13,7 +14,8 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
         <div className="space-y-1">
           <h1 className="text-xl font-semibold tracking-tight">Sign in to jword</h1>
           <p className="text-muted-foreground text-sm">
-            Enter the owner email. You will receive a one-time code and a magic link.
+            Enter your email and we will send a one-time code. New here? The same code creates your
+            account.
           </p>
         </div>
         <SignInForm
@@ -22,6 +24,11 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
             linkError ? "That sign-in link is invalid or expired. Request a new one." : null
           }
         />
+        <p className="text-muted-foreground text-xs">
+          <Link href="/privacy" className="underline">
+            Privacy policy
+          </Link>
+        </p>
       </div>
     </main>
   );

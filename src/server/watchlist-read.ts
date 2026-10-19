@@ -1,5 +1,5 @@
 import { runAction } from "./actions/result";
-import { requireSession, type WebSession } from "./auth/session";
+import { requireDiscoverySession, type WebSession } from "./auth/session";
 import { httpStatusFor } from "./extension-origin";
 
 export type ReadInput = Record<string, string | string[]>;
@@ -20,7 +20,7 @@ export function watchlistRead<T>(
 ) {
   return async function GET(request: Request): Promise<Response> {
     const result = await runAction(async () => {
-      const session = await requireSession();
+      const session = await requireDiscoverySession();
       return handle(session, readInput(new URL(request.url).searchParams), request.signal);
     }, "watchlist-read");
     return Response.json(result, {

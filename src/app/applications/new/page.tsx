@@ -11,7 +11,7 @@ export default async function NewApplicationPage() {
   const session = await requirePageSession();
   const today = createClock(serverEnv().timeZone).today();
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Add application</h1>

@@ -10,22 +10,37 @@ only to the extension's background worker. The worker calls jword's `/api/extens
 endpoints, and Chrome sends your normal jword sign-in cookie with those calls. The extension
 stores no password or token.
 
-## Install (unpacked)
+## Install
+
+Other people install from jword itself: **Extension** in the nav (`/extension`) downloads the
+Developer-mode zip and lists the steps (decision 027). A Chrome Web Store listing is planned.
 
 ```bash
-pnpm ext:build            # bundles into packages/extension/dist
+pnpm ext:build            # bundles into packages/extension/dist and writes the release zips
 ```
 
+`ext:build` writes (all git-ignored):
+
+| Output                                     | Use                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| `dist/`                                    | Load unpacked while developing.                                           |
+| `release/jword-capture-<v>.zip`            | Developer-mode zip; keeps the manifest `key`, so the id stays pinned.     |
+| `release/jword-capture-<v>-store.zip`      | Chrome Web Store upload; no `key` (the store rejects it, assigns an id).  |
+| `../../public/downloads/jword-capture.zip` | The Developer-mode zip served by jword at `/downloads/jword-capture.zip`. |
+
+The root `pnpm build` (Vercel's build command) runs `ext:build` first, so every deploy serves a
+fresh zip.
+
 1. Open `chrome://extensions`, turn on **Developer mode**.
-2. **Load unpacked** → choose `packages/extension/dist`. The id shown must be
-   `bnjlbmpmikpggohfhmfpddeeokbjpkbk` (pinned by the manifest `key`).
-3. On the jword server, set `JWORD_EXTENSION_ID=bnjlbmpmikpggohfhmfpddeeokbjpkbk` (`.env.local`
-   for local dev, the Vercel project for hosted) and restart it. Without it the API refuses every
-   call.
+2. **Load unpacked** → choose `packages/extension/dist` (or the unzipped release). The id shown
+   must be `bnjlbmpmikpggohfhmfpddeeokbjpkbk` (pinned by the manifest `key`).
+3. On the jword server, set `JWORD_EXTENSION_IDS` (comma list; the older `JWORD_EXTENSION_ID` still
+   works) to `bnjlbmpmikpggohfhmfpddeeokbjpkbk`, plus the store id once the store item exists.
+   Without it the API refuses every call.
 4. Pin "jword capture" to the toolbar.
-5. Optional: open the extension's **Options** to set the jword address. The default is
-   `http://localhost:3200` (local dev). For the hosted tracker enter its `https://` address; Chrome
-   asks you to allow the extension on that site, which lets the worker call jword there.
+5. The default jword address is `https://jword.work`. For local development open the extension's
+   **Options** and enter `http://localhost:3200`. Another `https://` address makes Chrome ask you
+   to allow the extension on that site.
 
 After changing extension code, run `pnpm ext:build` again and press the reload icon on the
 extension card. Pages captured before the reload need a refresh.
@@ -38,8 +53,10 @@ called out), choose a matching application to update or **New application**, and
 closes the panel. Clicking the button again re-reads the page; this is useful when LinkedIn
 switches jobs without reloading.
 
-If you are signed out, the panel says so. Click **Sign in to jword**, sign in in the tab that opens,
-then click **Try again**. The posting is kept.
+The panel shows which account it saves to ("Saving to you@example.com"). If you are signed out, it
+says so: click **Sign in to jword** (a new email creates an account), sign in in the tab that
+opens, then click **Try again**. The posting is kept. **Watch this company** appears only for the
+owner, who has discovery features (the panel asks `/api/extension/session`).
 
 ## Permissions
 
@@ -47,8 +64,9 @@ then click **Try again**. The posting is kept.
 | ----------------------------------------- | -------------------------------------------------------------------------------------- |
 | `activeTab`, `scripting`                  | Read the job page and draw the panel, only when you click the button.                  |
 | `storage`                                 | Remember the jword address; hold the capture shown in each tab's panel.                |
-| host `localhost`, `127.0.0.1`             | Call a local jword's capture API with your session.                                    |
-| optional `https://*/*` (granted per site) | Call your hosted jword's capture API, only after you approve that site.                |
+| host `jword.work`                         | Call jword's capture API with your session.                                            |
+| host `localhost`, `127.0.0.1`             | Call a local jword's capture API with your session (development).                      |
+| optional `https://*/*` (granted per site) | Call another jword address, only after you approve that site in Options.               |
 | web-accessible `overlay.*`                | Lets the panel page be framed into the job tab (dynamic URL, so sites can't probe it). |
 
 ## Supported sites

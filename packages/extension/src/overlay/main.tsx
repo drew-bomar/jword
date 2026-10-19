@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useState } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { XIcon } from "lucide-react";
 import { inferBoardFromUrl, type CapturedPosting } from "@jword/core/browser";
@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { WatchCaptureReview } from "@/features/capture/watch-review";
 import { CaptureReview } from "@/features/capture/capture-review";
 import type { OverlayCapture } from "../messages";
-import { ask, backgroundApi, backgroundWatchApi } from "./client";
+import {
+  ask,
+  backgroundApi,
+  backgroundWatchApi,
+  getSession,
+  type ExtensionSession,
+} from "./client";
 
 /**
  * The in-page capture overlay (decision 017): an extension page framed into the job tab by
@@ -26,22 +32,39 @@ function Overlay() {
   const [state, setState] = useState<State>({ phase: "loading" });
   const [mode, setMode] = useState<"application" | "watch">("application");
   const [busy, setBusy] = useState(false);
+  // Null until a signed-in answer: watch capture stays hidden unless the server offers it.
+  const [account, setAccount] = useState<ExtensionSession | null>(null);
   const watchApi = useMemo(() => backgroundWatchApi(nonce), []);
   const board =
     state.phase === "ready"
       ? (inferBoardFromUrl(state.posting.pageUrl) ?? inferBoardFromUrl(state.posting.jobUrl ?? ""))
       : null;
   const api = useMemo(() => backgroundApi(nonce), []);
+  const loadAccount = useCallback(() => {
+    void getSession(nonce).then((result) => setAccount(result.ok ? result.data : null));
+  }, []);
+
+  // Coming back from signing in (another tab) refreshes who the overlay saves for.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadAccount();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, [loadAccount]);
 
   useEffect(() => {
     ask<OverlayCapture>({ type: "jword:overlay-hello", nonce }).then(
       (result) => {
         if (!result.ok) return setState({ phase: "failed", message: result.error.message });
         setState({ phase: "ready", posting: result.data.posting, jwordUrl: result.data.jwordUrl });
+        loadAccount();
       },
       () => setState({ phase: "failed", message: "The jword extension did not answer." }),
     );
-  }, []);
+  }, [loadAccount]);
+
+  const watchable = board !== null && account?.discovery === true;
 
   return (
     <div className="flex h-full flex-col">
@@ -79,7 +102,12 @@ function Overlay() {
           </Alert>
         ) : (
           <>
-            {board ? (
+            {account?.email ? (
+              <p className="text-muted-foreground truncate text-xs" data-testid="overlay-account">
+                Saving to {account.email}
+              </p>
+            ) : null}
+            {watchable ? (
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -99,7 +127,7 @@ function Overlay() {
                 </Button>
               </div>
             ) : null}
-            {mode === "watch" && board ? (
+            {mode === "watch" && watchable && board ? (
               <WatchCaptureReview
                 company={state.posting.company ?? ""}
                 board={board}

@@ -1,4 +1,5 @@
 import { resolveTimeZone } from "@jword/core/browser";
+import { parseExtensionIds } from "@/server/extension-origin";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -20,9 +21,12 @@ export function serverEnv() {
   return {
     ...publicEnv(),
     timeZone: resolveTimeZone(process.env.JWORD_TIMEZONE),
-    /** Optional owner lock for the web app. */
+    /** The only user with discovery features (decision 027). Unset: nobody. */
     ownerUserId: process.env.JWORD_OWNER_USER_ID?.trim() || null,
-    /** The capture extension allowed to call /api/extension/* (decision 017). Unset: API off. */
-    extensionId: process.env.JWORD_EXTENSION_ID?.trim() || null,
+    /** Capture extensions allowed to call /api/extension/* (decisions 017, 027). Empty: API off. */
+    extensionIds: parseExtensionIds(
+      process.env.JWORD_EXTENSION_IDS,
+      process.env.JWORD_EXTENSION_ID,
+    ),
   };
 }

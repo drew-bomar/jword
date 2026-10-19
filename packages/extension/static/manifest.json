@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "jword capture",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read the job posting in the current tab into your jword tracker, reviewed in a panel on the page.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoy+YHQqXORQH2PlYOywFSFJvSeKYRH72NL62exd6vLYVOkCDGeBKG7wC0HYANIjfQ43JmRfCvnDaa2Yx2MctTnVj4iHWNB3XrtysugpL/vofM3hD9ot8z5MK9KFXprd28czrq9gGFenBwCwqd+F3nqVqjz3Dah+3VKAW8MSFA9BrIyG2WlAvD1viLowgv20hz3WTGumusj5i6qYMdSiiFqf7qXlARfnx2A60qWFJ4YszX9FF6aBDtLF4yYDzubahITTQ9Z0KO3JLXME6VaHj9SwGHsMYlC+vVKgyDjvQufKXmiGI3n5ual8XDzg2CSCt35wnGz2xeFqgWKchrdLx1QIDAQAB",
   "action": {
@@ -16,7 +16,7 @@
     "open_in_tab": false
   },
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "host_permissions": ["https://jword.work/*", "http://localhost/*", "http://127.0.0.1/*"],
   "optional_host_permissions": ["https://*/*"],
   "web_accessible_resources": [
     {

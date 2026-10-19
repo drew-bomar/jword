@@ -24,7 +24,7 @@ import {
 import { LeadViewTabs } from "@/features/leads/lead-view-tabs";
 import { LeadFiltersBar } from "@/features/leads/lead-filters";
 import { LeadsTable } from "@/features/leads/leads-table";
-import { requirePageSession } from "@/server/auth/session";
+import { requireDiscoveryPageSession } from "@/server/auth/session";
 import { servicesFor } from "@/server/services";
 
 export const metadata: Metadata = { title: "Leads" };
@@ -61,7 +61,7 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Le
 }
 
 export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
-  const session = await requirePageSession();
+  const session = await requireDiscoveryPageSession();
   const params = await searchParams;
   const filters = parseFilters(params);
   const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
@@ -96,7 +96,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   );
 
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="space-y-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Leads</h1>

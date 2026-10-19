@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/sign-in", "/auth/callback"];
+const PUBLIC_PATHS = ["/sign-in", "/auth/callback", "/privacy"];
 /** JSON endpoints answer a signed-out caller with 401 themselves instead of a sign-in redirect. */
 const API_PATHS = ["/api/extension/", "/api/watchlist/"];
 

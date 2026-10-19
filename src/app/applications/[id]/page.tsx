@@ -60,7 +60,7 @@ export default async function ApplicationDetailPage({
   ];
 
   return (
-    <AppShell email={session.email}>
+    <AppShell session={session}>
       <div className="space-y-6">
         <div>
           <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-2">
