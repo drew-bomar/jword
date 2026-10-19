@@ -26,22 +26,53 @@ function admin() {
   );
 }
 
-/** The 6-digit code from the newest Mailpit message sent to `email`. */
-async function codeFor(page: Page, email: string): Promise<string> {
-  let code: string | undefined;
+interface Mail {
+  id: string;
+  subject: string;
+  code: string;
+  /** The sign-in link's path and query, e.g. /auth/callback?token_hash=…&type=email. */
+  linkPath: string;
+  linkOrigin: string;
+}
+
+/** The newest Mailpit message to `email` that is not `after`. */
+async function mailFor(page: Page, email: string, after?: string): Promise<Mail> {
+  let mail: Mail | undefined;
   await expect
     .poll(async () => {
       const search = await page.request.get(
         `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`,
       );
       const id = (await search.json()).messages?.[0]?.ID as string | undefined;
-      if (!id) return undefined;
+      if (!id || id === after) return undefined;
       const message = await (await page.request.get(`${MAILPIT}/api/v1/message/${id}`)).json();
-      code = /\b(\d{6})\b/.exec(message.Text ?? message.HTML ?? "")?.[1];
-      return code;
+      const html: string = message.HTML ?? "";
+      const code = /\b(\d{6})\b/.exec(message.Text ?? html)?.[1];
+      const href = /href="([^"]+)"/.exec(html)?.[1]?.replaceAll("&amp;", "&");
+      if (!code || !href) return undefined;
+      const url = new URL(href);
+      mail = {
+        id,
+        subject: message.Subject,
+        code,
+        linkPath: url.pathname + url.search,
+        linkOrigin: url.origin,
+      };
+      return mail;
     })
     .toBeTruthy();
-  return code!;
+  return mail!;
+}
+
+async function codeFor(page: Page, email: string): Promise<string> {
+  return (await mailFor(page, email)).code;
+}
+
+async function requestCode(page: Page, email: string): Promise<void> {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByText(`We sent a code to ${email}`)).toBeVisible();
 }
 
 async function navLabels(page: Page): Promise<string[]> {
@@ -149,10 +180,7 @@ test("a new email signs up with the emailed code and lands on an empty tracker",
   const email = `signup-${Date.now()}-${randomUUID().slice(0, 6)}@test.local`;
   const page = await browser.newPage();
   try {
-    await page.goto("/sign-in");
-    await page.getByLabel("Email").fill(email);
-    await page.getByRole("button", { name: "Send code" }).click();
-    await expect(page.getByText(`We sent a code to ${email}`)).toBeVisible();
+    await requestCode(page, email);
     await page.getByLabel("One-time code").fill(await codeFor(page, email));
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/$/);
@@ -160,6 +188,40 @@ test("a new email signs up with the emailed code and lands on an empty tracker",
     expect(await navLabels(page)).toEqual(["Applications", "Import", "Profile", "Extension"]);
   } finally {
     await page.close();
+    const { data } = await admin().auth.admin.listUsers({ perPage: 1000 });
+    const user = data.users.find((u) => u.email === email);
+    if (user) await admin().auth.admin.deleteUser(user.id);
+  }
+});
+
+test("the emailed link signs in new and returning users on jword's own callback", async ({
+  browser,
+}, info) => {
+  test.skip(info.project.name !== "desktop-chromium", "one link check is enough");
+  const email = `link-${Date.now()}-${randomUUID().slice(0, 6)}@test.local`;
+  try {
+    // New address: the "Confirm signup" template.
+    let page = await browser.newPage();
+    await requestCode(page, email);
+    const welcome = await mailFor(page, email);
+    // The link targets the site (Supabase Site URL), never the supabase.co verify endpoint.
+    expect(welcome.linkOrigin).toBe("http://localhost:3200");
+    expect(welcome.linkPath).toMatch(/^\/auth\/callback\?token_hash=[^&]+&type=email$/);
+    await page.goto(welcome.linkPath);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText("No applications yet")).toBeVisible();
+    await page.close();
+
+    // Returning address in a fresh browser: the "Magic Link" template.
+    page = await browser.newPage();
+    await requestCode(page, email);
+    const again = await mailFor(page, email, welcome.id);
+    expect(again.subject).toBe("Your jword sign-in code");
+    await page.goto(again.linkPath);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "Applications", exact: true })).toBeVisible();
+    await page.close();
+  } finally {
     const { data } = await admin().auth.admin.listUsers({ perPage: 1000 });
     const user = data.users.find((u) => u.email === email);
     if (user) await admin().auth.admin.deleteUser(user.id);

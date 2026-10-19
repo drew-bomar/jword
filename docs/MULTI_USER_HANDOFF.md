@@ -148,8 +148,10 @@ version; note it in the ADR as a known limitation.
      code" for both).
   4. Supabase → Authentication → Sign In / Providers: allow new users to sign up (email); keep
      "Confirm email" on.
-  5. Supabase → Authentication → URL Configuration: Site URL `https://<domain>`; redirect URLs
-     `https://<domain>/auth/callback` and `https://jword.vercel.app/auth/callback`.
+  5. Supabase → Authentication → URL Configuration: Site URL `https://<domain>` (required: both
+     templates link to `{{ .SiteURL }}/auth/callback?token_hash=…&type=email`, so the link stays
+     on jword's domain instead of supabase.co); redirect URLs `https://<domain>/auth/callback`
+     and `https://jword.vercel.app/auth/callback`.
   6. Vercel: add the domain to the project. Keep `JWORD_OWNER_USER_ID` (it now grants discovery).
 - Slice 3 (extension) built with `https://jword.work` as the default: `/api/extension/session`,
   overlay account line and discovery-gated watch, `JWORD_EXTENSION_IDS`, release zips
