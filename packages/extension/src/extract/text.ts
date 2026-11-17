@@ -79,10 +79,11 @@ export function elementToText(root: Node): string {
     if (block) out.push("\n");
   };
   walk(root);
+  // Whitespace between tags can double up spaces, e.g. "•  Item" from an indented <li>.
   return out
     .join("")
     .split("\n")
-    .map((line) => line.trim())
+    .map((line) => line.replace(/ {2,}/g, " ").trim())
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

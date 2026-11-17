@@ -1,11 +1,11 @@
 import type { CapturedPostingPayload } from "@jword/core/browser";
+import { extractGeneric } from "./generic";
 import { extractFromJsonLd } from "./jsonld";
 import { ashby } from "./sites/ashby";
 import { greenhouse } from "./sites/greenhouse";
 import { lever } from "./sites/lever";
 import { linkedin } from "./sites/linkedin";
 import { workday } from "./sites/workday";
-import { metaContent, textOf } from "./text";
 import type { Extraction, GuessableField, SiteExtractor } from "./types";
 
 /** Ordered site adapters. The first whose `matches` accepts the URL is used. */
@@ -16,22 +16,6 @@ export const SITE_EXTRACTORS: SiteExtractor[] = [linkedin, greenhouse, lever, as
  * legal entity ("2100 NVIDIA USA"), so its tenant-derived name is kept even though it is a guess.
  */
 const PREFER_SITE: Record<string, Array<keyof Extraction>> = { workday: ["company"] };
-
-/** Last-resort values from standard meta tags; titles and company names here are guesses. */
-function extractFromMeta(doc: Document, url: URL): Extraction {
-  const siteName = metaContent(doc, "og:site_name");
-  const title = metaContent(doc, "og:title") ?? textOf(doc, "h1") ?? (doc.title.trim() || null);
-  const canonical =
-    doc.querySelector('link[rel="canonical"]')?.getAttribute("href") ?? metaContent(doc, "og:url");
-  return {
-    title,
-    company: siteName,
-    guessed: [...(title ? ["title" as const] : []), ...(siteName ? ["company" as const] : [])],
-    jobUrl: canonical ? new URL(canonical, url).toString() : null,
-    // Company career pages often embed a Greenhouse board and carry its id in the URL.
-    externalJobId: url.searchParams.get("gh_jid"),
-  };
-}
 
 const TRACKING_PARAMS =
   /^(utm_.*|gh_src|lever-source|lever-origin|ref|refid|trk|trackingid|src|source|sourcetype|mode)$/i;
@@ -102,11 +86,15 @@ export function extractPosting(doc: Document, pageUrl: string): CapturedPostingP
   for (const field of PREFER_SITE[site?.name ?? ""] ?? []) {
     if (fromSite[field]) delete fromJsonLd[field];
   }
+  const generic = extractGeneric(doc, url);
+  // A known site's adapter knows where its description lives; when it finds none (LinkedIn's
+  // lazy "About the job"), the page's largest text block is a search list, not the posting.
+  if (site) delete generic.description;
   const merged = mergeExtractions([
-    // A site adapter's guesses are weaker than JSON-LD but stronger than meta tags.
+    // A site adapter's guesses are weaker than JSON-LD but stronger than generic page reading.
     fromSite,
     fromJsonLd,
-    extractFromMeta(doc, url),
+    generic,
   ]);
   return {
     version: 1,
