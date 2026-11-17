@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import { normalizeCapturedPosting } from "@jword/core/browser";
 import { cleanJobUrl, extractPosting, mergeExtractions } from "../src/extract/index";
+import { companyFromTitle } from "../src/extract/generic";
 import { arrangementFrom } from "../src/extract/text";
 
 /** Fixtures are small hand-written pages that mirror each site's real markup (2026-09). */
@@ -183,6 +184,45 @@ describe("site extractors", () => {
       jobUrl: "https://careers.globex.example/jobs/senior-designer?team=design",
     });
     expect(p.guessed).toEqual(expect.arrayContaining(["title", "company"]));
+    // "Some text." is not a job description.
+    expect(p.description).toBeNull();
+  });
+
+  it("career site without JSON-LD: company from the title suffix, main text as description", () => {
+    const p = capture(
+      "career-site-gatsby.html",
+      "https://www.initech.example/company/careers/engineering/software-engineer-new-grad-1234567?gh_jid=1234567",
+    );
+    expect(p).toMatchObject({
+      extractor: "generic",
+      company: "Initech",
+      title: "Software Engineer - New Grad, Storage (2027 Start)",
+      externalJobId: "1234567",
+      jobUrl:
+        "https://www.initech.example/company/careers/engineering/software-engineer-new-grad-1234567",
+    });
+    expect(p.guessed).toEqual(expect.arrayContaining(["title", "company"]));
+    expect(p.description).toMatch(/^P-101\n\nAt Initech we build storage systems/);
+    expect(p.description).toContain("• Comfort with at least one systems language");
+    expect(p.description).toContain("About Initech");
+    expect(p.description).not.toMatch(/Careers home|Related: read|Copyright/);
+  });
+
+  it("career site with site-wide og tags: heading title, page-title company, page URL", () => {
+    const p = capture(
+      "career-site-nextjs.html",
+      "https://jobs.umbrella.example/positions/abc123?utm_source=x",
+    );
+    expect(p).toMatchObject({
+      company: "Umbrella Labs",
+      title: "Graduate software engineer, US",
+      // og:url is the site's home page, so the posting's own URL is kept.
+      jobUrl: "https://jobs.umbrella.example/positions/abc123",
+    });
+    expect(p.description).toMatch(/^At Umbrella Labs we acquire/);
+    expect(p.description).toContain("• Build software that matters. Ship features");
+    expect(p.description).toContain("We review every application ourselves");
+    expect(p.description).not.toMatch(/Back to jobs|about us, careers/);
   });
 });
 
@@ -205,6 +245,14 @@ describe("helpers", () => {
     expect(arrangementFrom("Remote - US")).toBe("REMOTE");
     expect(arrangementFrom("On-site")).toBe("ONSITE");
     expect(arrangementFrom("Chicago, IL")).toBeNull();
+  });
+
+  it("reads a company name from a page-title suffix, skipping generic words", () => {
+    expect(companyFromTitle("Engineer - New Grad - Acme")).toBe("Acme");
+    expect(companyFromTitle("Engineer | Careers at Acme")).toBe("Acme");
+    expect(companyFromTitle("Engineer — Acme Jobs")).toBe("Acme");
+    expect(companyFromTitle("Engineer | Careers", "Engineer - Acme")).toBe("Acme");
+    expect(companyFromTitle("Back-end Engineer", "Jobs at Acme")).toBeNull();
   });
 
   it("cleans job URLs", () => {
